@@ -8,15 +8,24 @@ GO_LDFLAGS ?= -s -X $(REPO_PATH)/versioninfo.REVISION=$(REVISION) \
 			  -X $(REPO_PATH)/versioninfo.BUILTAT=$(BUILTAT) \
 			  -X $(REPO_PATH)/versioninfo.VERSION=$(VERSION)
 
+deps: export GOOS=linux
 deps:
-	glide i
-	rm -rf ./vendor/github.com/docker/docker/vendor
-	rm -rf ./vendor/github.com/docker/distribution/vendor
+	go get
 
+binary: export GOOS=linux
 binary:
 	go build -ldflags "$(GO_LDFLAGS)" -a -tags netgo -installsuffix netgo -o eru-minions
 
 build: deps binary
+
+docker_build:
+	docker run --rm \
+		-v $(CURDIR):/go/src/github.com/nyanpassu/minions:rw \
+		-v $(HOME)/.glide:/home/user/.glide:rw \
+		-e LOCAL_USER_ID=$(LOCAL_USER_ID) \
+		$(GO_BUILD_CONTAINER) /bin/sh -c ' \
+			cd /go/src/github.com/projectcalico/libnetwork-plugin && \
+			glide install -strip-vendor' 
 
 test: deps
 	# fix mock docker client bug, see https://github.com/moby/moby/pull/34383 [docker 17.05.0-ce]

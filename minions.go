@@ -7,10 +7,10 @@ import (
 	"github.com/codegangsta/cli"
 	"github.com/docker/go-plugins-helpers/ipam"
 	"github.com/docker/go-plugins-helpers/network"
+	"github.com/nyanpassu/minions/driver"
+	"github.com/nyanpassu/minions/versioninfo"
 	"github.com/projectcalico/libcalico-go/lib/apiconfig"
 	"github.com/projectcalico/libcalico-go/lib/clientv3"
-	"github.com/projecteru2/minions/driver"
-	"github.com/projecteru2/minions/versioninfo"
 	log "github.com/sirupsen/logrus"
 )
 
