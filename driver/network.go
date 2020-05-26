@@ -228,6 +228,7 @@ func (d NetworkDriver) CreateNetwork(request *network.CreateNetworkRequest) erro
 }
 
 func (d NetworkDriver) populatePoolLabel(pools []string, networkID string) error {
+	log.Info("populatePoolLabel")
 	ctx := context.Background()
 	poolClient := d.client.IPPools()
 	ipPools, err := poolClient.List(ctx, options.ListOptions{})
@@ -236,7 +237,9 @@ func (d NetworkDriver) populatePoolLabel(pools []string, networkID string) error
 		return err
 	}
 	for _, ipPool := range ipPools.Items {
+		log.Info("populatePoolLabel range ipPools.Items")
 		for _, cidr := range pools {
+			log.Info("populatePoolLabel range pools")
 			if ipPool.Spec.CIDR == cidr {
 				ann := ipPool.GetAnnotations()
 				if ann == nil {
@@ -252,6 +255,7 @@ func (d NetworkDriver) populatePoolLabel(pools []string, networkID string) error
 			}
 		}
 	}
+	log.Info("populatePoolLabel return")
 	return nil
 }
 
