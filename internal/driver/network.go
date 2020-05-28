@@ -233,9 +233,11 @@ func (d NetworkDriver) populatePoolLabel(pools []string, networkID string) error
 	poolClient := d.client.IPPools()
 	ipPools, err := poolClient.List(ctx, options.ListOptions{})
 	if err != nil {
+		log.Info("poolClient.List Error")
 		log.Errorln(err)
 		return err
 	}
+	log.Info("pending loop")
 	for _, ipPool := range ipPools.Items {
 		log.Info("populatePoolLabel range ipPools.Items")
 		for _, cidr := range pools {

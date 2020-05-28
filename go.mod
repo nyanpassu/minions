@@ -1,4 +1,4 @@
-module github.com/nyanpassu/minions
+module github.com/projecteru2/minions
 
 go 1.14
 
