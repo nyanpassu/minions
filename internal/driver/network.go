@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	dockerTypes "github.com/docker/docker/api/types"
 	dockerClient "github.com/docker/docker/client"
 	"github.com/docker/go-plugins-helpers/network"
 	"github.com/pkg/errors"
@@ -41,6 +42,7 @@ const (
 
 type NetworkDriver struct {
 	client         clientv3.Interface
+	dockerCli      *dockerClient.Client
 	containerName  string
 	orchestratorID string
 	namespace      string
@@ -57,7 +59,8 @@ type NetworkDriver struct {
 	labelEndpoints bool
 }
 
-func NewNetworkDriver(client clientv3.Interface) network.Driver {
+// NewNetworkDriver .
+func NewNetworkDriver(client clientv3.Interface, dockerCli *dockerClient.Client) network.Driver {
 	hostname, err := osutils.GetHostname()
 	if err != nil {
 		err = errors.Wrap(err, "Hostname fetching error")
@@ -65,7 +68,8 @@ func NewNetworkDriver(client clientv3.Interface) network.Driver {
 	}
 
 	driver := NetworkDriver{
-		client: client,
+		client:    client,
+		dockerCli: dockerCli,
 
 		// Orchestrator and container IDs used in our endpoint identification. These
 		// are fixed for libnetwork.  Unique endpoint identification is provided by
@@ -228,20 +232,15 @@ func (d NetworkDriver) CreateNetwork(request *network.CreateNetworkRequest) erro
 }
 
 func (d NetworkDriver) populatePoolLabel(pools []string, networkID string) error {
-	log.Info("populatePoolLabel")
 	ctx := context.Background()
 	poolClient := d.client.IPPools()
 	ipPools, err := poolClient.List(ctx, options.ListOptions{})
 	if err != nil {
-		log.Info("poolClient.List Error")
 		log.Errorln(err)
 		return err
 	}
-	log.Info("pending loop")
 	for _, ipPool := range ipPools.Items {
-		log.Info("populatePoolLabel range ipPools.Items")
 		for _, cidr := range pools {
-			log.Info("populatePoolLabel range pools")
 			if ipPool.Spec.CIDR == cidr {
 				ann := ipPool.GetAnnotations()
 				if ann == nil {
@@ -257,7 +256,6 @@ func (d NetworkDriver) populatePoolLabel(pools []string, networkID string) error
 			}
 		}
 	}
-	log.Info("populatePoolLabel return")
 	return nil
 }
 
@@ -266,8 +264,19 @@ func (d NetworkDriver) DeleteNetwork(request *network.DeleteNetworkRequest) erro
 	return nil
 }
 
+func (d NetworkDriver) printDockerContainersAndEndpointId() {
+	containers, err := d.dockerCli.ContainerList(context.Background(), dockerTypes.ContainerListOptions{})
+	for _, container := range containers {
+		log.Printf("containerID = %s", container.ID)
+		for networkName, network := range container.NetworkSettings.Networks {
+			log.Printf("networkName = %s, endpointID = %s", networkName, network.EndpointID)
+		}
+	}
+}
+
 func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*network.CreateEndpointResponse, error) {
 	logutils.JSONMessage("CreateEndpoint", request)
+	d.printDockerContainersAndEndpointId()
 
 	ctx := context.Background()
 	hostname, err := osutils.GetHostname()
@@ -584,13 +593,13 @@ func (d NetworkDriver) populateWorkloadEndpointWithLabels(request *network.Creat
 	deadline := start.Add(d.labelPollTimeout)
 
 	os.Setenv("DOCKER_API_VERSION", "1.25")
-	dockerCli, err := dockerClient.NewEnvClient()
-	if err != nil {
-		err = errors.Wrap(err, "Error while attempting to instantiate docker client from env")
-		log.Errorln(err)
-		return
-	}
-	defer dockerCli.Close()
+	// dockerCli, err := dockerClient.NewEnvClient()
+	// if err != nil {
+	// 	err = errors.Wrap(err, "Error while attempting to instantiate docker client from env")
+	// 	log.Errorln(err)
+	// 	return
+	// }
+	// defer dockerCli.Close()
 
 RETRY_NETWORK_INSPECT:
 	if time.Now().After(deadline) {
@@ -599,7 +608,7 @@ RETRY_NETWORK_INSPECT:
 	}
 
 	// inspect our custom network
-	networkData, err := dockerCli.NetworkInspect(ctx, networkID, dockertypes.NetworkInspectOptions{})
+	networkData, err := d.dockerCli.NetworkInspect(ctx, networkID, dockertypes.NetworkInspectOptions{})
 	if err != nil {
 		err = errors.Wrapf(err, "Error inspecting network %s - retrying (T=%s)", networkID, time.Since(start))
 		log.Warningln(err)
@@ -647,7 +656,7 @@ RETRY_CONTAINER_INSPECT:
 		return
 	}
 
-	containerInfo, err := dockerCli.ContainerInspect(ctx, containerID)
+	containerInfo, err := d.dockerCli.ContainerInspect(ctx, containerID)
 	if err != nil {
 		err = errors.Wrapf(err, "Error inspecting container %s for labels - retrying (T=%s)", containerID, time.Since(start))
 		log.Warningln(err)

@@ -5,8 +5,10 @@ import (
 	"os"
 
 	"github.com/codegangsta/cli"
+	dockerClient "github.com/docker/docker/client"
 	"github.com/docker/go-plugins-helpers/ipam"
 	"github.com/docker/go-plugins-helpers/network"
+	"github.com/pkg/errors"
 	"github.com/projectcalico/libcalico-go/lib/apiconfig"
 	"github.com/projectcalico/libcalico-go/lib/clientv3"
 	"github.com/projecteru2/minions/internal/driver"
@@ -19,8 +21,9 @@ var (
 	ipamName string
 	debug    bool
 
-	config *apiconfig.CalicoAPIConfig
-	client clientv3.Interface
+	config    *apiconfig.CalicoAPIConfig
+	client    clientv3.Interface
+	dockerCli *dockerClient.Client
 )
 
 func initializeClient() {
@@ -30,6 +33,12 @@ func initializeClient() {
 		panic(err)
 	}
 	if client, err = clientv3.New(*config); err != nil {
+		panic(err)
+	}
+
+	dockerCli, err = dockerClient.NewEnvClient()
+	if err != nil {
+		err = errors.Wrap(err, "Error while attempting to instantiate docker client from env")
 		panic(err)
 	}
 
@@ -43,7 +52,7 @@ func serve() {
 	initializeClient()
 
 	errChannel := make(chan error)
-	networkHandler := network.NewHandler(driver.NewNetworkDriver(client))
+	networkHandler := network.NewHandler(driver.NewNetworkDriver(client, dockerCli))
 	ipamHandler := ipam.NewHandler(driver.NewIpamDriver(client))
 
 	go func(c chan error) {

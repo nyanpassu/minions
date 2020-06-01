@@ -237,16 +237,16 @@ func (i IpamDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.R
 			Hostname: hostname,
 		}
 
-		ctx := context.Background()
-		reserved, present, err := i.barrelIPAM.GetReservedIPAddress(ctx, request.PoolID, request.Address)
-		if err != nil {
-			err = errors.Wrapf(err, "Get barrel ip reserved status error, data: %+v", ipArgs)
-			log.Errorln(err)
-			return nil, err
-		}
-		if present {
-			return i.reallocateAddress(ctx, reserved)
-		}
+		// ctx := context.Background()
+		// reserved, present, err := i.barrelIPAM.GetReservedIPAddress(ctx, request.PoolID, request.Address)
+		// if err != nil {
+		// 	err = errors.Wrapf(err, "Get barrel ip reserved status error, data: %+v", ipArgs)
+		// 	log.Errorln(err)
+		// 	return nil, err
+		// }
+		// if present {
+		// 	return i.reallocateAddress(ctx, reserved)
+		// }
 
 		err = i.client.IPAM().AssignIP(context.Background(), ipArgs)
 		if err != nil {
@@ -305,17 +305,17 @@ func (i IpamDriver) ReleaseAddress(request *ipam.ReleaseAddressRequest) error {
 
 	ip := caliconet.IP{IP: net.ParseIP(request.Address)}
 
-	_, present, err := i.barrelIPAM.GetReservedIPAddress(context.Background(), request.PoolID, request.Address)
-	if err != nil {
-		err = errors.Wrapf(err, "Get reserved ip error, ip: %v", ip)
-		log.Errorln(err)
-		return err
-	}
+	// _, present, err := i.barrelIPAM.GetReservedIPAddress(context.Background(), request.PoolID, request.Address)
+	// if err != nil {
+	// 	err = errors.Wrapf(err, "Get reserved ip error, ip: %v", ip)
+	// 	log.Errorln(err)
+	// 	return err
+	// }
 
-	if present {
-		log.Info("Ip is reserved, will not release to pool, ip: %v", ip)
-		return nil
-	}
+	// if present {
+	// 	log.Info("Ip is reserved, will not release to pool, ip: %v", ip)
+	// 	return nil
+	// }
 
 	// Unassign the address.  This handles the address already being unassigned
 	// in which case it is a no-op.
