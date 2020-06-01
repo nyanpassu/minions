@@ -266,10 +266,12 @@ func (d NetworkDriver) DeleteNetwork(request *network.DeleteNetworkRequest) erro
 
 func (d NetworkDriver) printDockerContainersAndEndpointId() {
 	containers, err := d.dockerCli.ContainerList(context.Background(), dockerTypes.ContainerListOptions{})
-	for _, container := range containers {
-		log.Printf("containerID = %s", container.ID)
-		for networkName, network := range container.NetworkSettings.Networks {
-			log.Printf("networkName = %s, endpointID = %s", networkName, network.EndpointID)
+	if err != nil {
+		for _, container := range containers {
+			log.Printf("containerID = %s", container.ID)
+			for networkName, network := range container.NetworkSettings.Networks {
+				log.Printf("networkName = %s, endpointID = %s", networkName, network.EndpointID)
+			}
 		}
 	}
 }

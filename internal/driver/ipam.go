@@ -319,7 +319,7 @@ func (i IpamDriver) ReleaseAddress(request *ipam.ReleaseAddressRequest) error {
 
 	// Unassign the address.  This handles the address already being unassigned
 	// in which case it is a no-op.
-	_, err = i.client.IPAM().ReleaseIPs(context.Background(), []caliconet.IP{ip})
+	_, err := i.client.IPAM().ReleaseIPs(context.Background(), []caliconet.IP{ip})
 	if err != nil {
 		err = errors.Wrapf(err, "IP releasing error, ip: %v", ip)
 		log.Errorln(err)
