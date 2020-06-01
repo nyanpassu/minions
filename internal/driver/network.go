@@ -265,13 +265,16 @@ func (d NetworkDriver) DeleteNetwork(request *network.DeleteNetworkRequest) erro
 }
 
 func (d NetworkDriver) printDockerContainersAndEndpointId() {
+	log.Info("printDockerContainersAndEndpointId")
 	containers, err := d.dockerCli.ContainerList(context.Background(), dockerTypes.ContainerListOptions{})
 	if err != nil {
-		for _, container := range containers {
-			log.Printf("containerID = %s", container.ID)
-			for networkName, network := range container.NetworkSettings.Networks {
-				log.Printf("networkName = %s, endpointID = %s", networkName, network.EndpointID)
-			}
+		log.Errorln(errors.Wrap(err, "ContainerList Error"))
+		return
+	}
+	for _, container := range containers {
+		log.Printf("containerID = %s", container.ID)
+		for networkName, network := range container.NetworkSettings.Networks {
+			log.Printf("networkName = %s, endpointID = %s", networkName, network.EndpointID)
 		}
 	}
 }
@@ -459,6 +462,7 @@ func (d NetworkDriver) EndpointInfo(request *network.InfoRequest) (*network.Info
 
 func (d NetworkDriver) Join(request *network.JoinRequest) (*network.JoinResponse, error) {
 	logutils.JSONMessage("Join", request)
+	d.printDockerContainersAndEndpointId()
 
 	ctx := context.Background()
 	// 1) Set up a veth pair
