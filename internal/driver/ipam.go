@@ -13,22 +13,21 @@ import (
 	"github.com/projectcalico/libcalico-go/lib/options"
 	logutils "github.com/projectcalico/libnetwork-plugin/utils/log"
 	osutils "github.com/projectcalico/libnetwork-plugin/utils/os"
-	barrelIPAM "github.com/projecteru2/minions/lib/ipam"
 	log "github.com/sirupsen/logrus"
 )
 
 type IpamDriver struct {
-	client     clientv3.Interface
-	barrelIPAM barrelIPAM.IPAddressManager
+	client clientv3.Interface
+	ripam  ReservedIPManager
 
 	poolIDV4 string
 	poolIDV6 string
 }
 
-func NewIpamDriver(client clientv3.Interface) ipam.Ipam {
+func NewIpamDriver(client clientv3.Interface, ripam ReservedIPManager) ipam.Ipam {
 	return IpamDriver{
-		client: client,
-
+		client:   client,
+		ripam:    ripam,
 		poolIDV4: PoolIDV4,
 		poolIDV6: PoolIDV6,
 	}
@@ -227,34 +226,35 @@ func (i IpamDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.R
 		}
 		IPs = append(IPsV4, IPsV6...)
 	} else {
-		// Docker allows the users to specify any address.
-		// We'll return an error if the address isn't in a Calico pool, but we don't care which pool it's in
-		// (i.e. it doesn't need to match the subnet from the docker network).
-		log.Debugln("Reserving a specific address in Calico pools")
-		ip := net.ParseIP(request.Address)
-		ipArgs := calicoipam.AssignIPArgs{
-			IP:       caliconet.IP{IP: ip},
-			Hostname: hostname,
-		}
-
-		// ctx := context.Background()
-		// reserved, present, err := i.barrelIPAM.GetReservedIPAddress(ctx, request.PoolID, request.Address)
-		// if err != nil {
-		// 	err = errors.Wrapf(err, "Get barrel ip reserved status error, data: %+v", ipArgs)
-		// 	log.Errorln(err)
-		// 	return nil, err
-		// }
-		// if present {
-		// 	return i.reallocateAddress(ctx, reserved)
-		// }
-
-		err = i.client.IPAM().AssignIP(context.Background(), ipArgs)
-		if err != nil {
-			err = errors.Wrapf(err, "IP assignment error, data: %+v", ipArgs)
+		// first try to identify whether the IP is reserved
+		ctx := context.Background()
+		reserved, err := i.ripam.CheckAndAquireReservedIP(ctx, request.Address)
+		if reserved && err != nil {
+			err = errors.Wrapf(err, "Get reserved ip status error, ip: %s", request.Address)
 			log.Errorln(err)
 			return nil, err
+		} else if reserved {
+			// succeed to aquire reserved ip
+			IPs = []caliconet.IP{{IP: net.ParseIP(request.Address)}}
+		} else {
+			// Docker allows the users to specify any address.
+			// We'll return an error if the address isn't in a Calico pool, but we don't care which pool it's in
+			// (i.e. it doesn't need to match the subnet from the docker network).
+			log.Debugln("Reserving a specific address in Calico pools")
+			ip := net.ParseIP(request.Address)
+			ipArgs := calicoipam.AssignIPArgs{
+				IP:       caliconet.IP{IP: ip},
+				Hostname: hostname,
+			}
+
+			err = i.client.IPAM().AssignIP(context.Background(), ipArgs)
+			if err != nil {
+				err = errors.Wrapf(err, "IP assignment error, data: %+v", ipArgs)
+				log.Errorln(err)
+				return nil, err
+			}
+			IPs = []caliconet.IP{{IP: ip}}
 		}
-		IPs = []caliconet.IP{{IP: ip}}
 	}
 
 	// We should only have one IP address assigned at this point.
@@ -265,17 +265,9 @@ func (i IpamDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.R
 		return nil, err
 	}
 
-	// Return the IP as a CIDR.
-	var respAddr string
-	if IPs[0].Version() == 4 {
-		// IPv4 address
-		respAddr = fmt.Sprintf("%v/%v", IPs[0], "32")
-	} else {
-		// IPv6 address
-		respAddr = fmt.Sprintf("%v/%v", IPs[0], "128")
-	}
 	resp := &ipam.RequestAddressResponse{
-		Address: respAddr,
+		// Return the IP as a CIDR.
+		Address: formatIPAddress(IPs[0]),
 	}
 
 	logutils.JSONMessage("RequestAddress response", resp)
@@ -283,21 +275,13 @@ func (i IpamDriver) RequestAddress(request *ipam.RequestAddressRequest) (*ipam.R
 	return resp, nil
 }
 
-func (i IpamDriver) reallocateAddress(ctx context.Context, reserved barrelIPAM.ReservedIPAddress) (*ipam.RequestAddressResponse, error) {
-	released, err := i.barrelIPAM.ReleaseReservedIPAddress(ctx, reserved.PoolID, reserved.IPAddress)
-	if err != nil {
-		err = errors.Wrapf(err, "Release reserved ip error, ip: %s", reserved.IPAddress)
-		log.Errorln(err)
-		return nil, err
+func formatIPAddress(ip caliconet.IP) string {
+	if ip.Version() == 4 {
+		// IPv4 address
+		return fmt.Sprintf("%v/%v", ip, "32")
 	}
-	if released {
-		return &ipam.RequestAddressResponse{
-			Address: reserved.IPAddress,
-		}, nil
-	}
-	err = errors.Errorf("reserved ip has already been reallocated, ip: %s", reserved.IPAddress)
-	log.Errorln(err)
-	return nil, err
+	// IPv6 address
+	return fmt.Sprintf("%v/%v", ip, "128")
 }
 
 func (i IpamDriver) ReleaseAddress(request *ipam.ReleaseAddressRequest) error {
@@ -305,22 +289,21 @@ func (i IpamDriver) ReleaseAddress(request *ipam.ReleaseAddressRequest) error {
 
 	ip := caliconet.IP{IP: net.ParseIP(request.Address)}
 
-	// _, present, err := i.barrelIPAM.GetReservedIPAddress(context.Background(), request.PoolID, request.Address)
-	// if err != nil {
-	// 	err = errors.Wrapf(err, "Get reserved ip error, ip: %v", ip)
-	// 	log.Errorln(err)
-	// 	return err
-	// }
+	reserved, err := i.ripam.IsReservedIP(context.Background(), request.Address)
+	if err != nil {
+		err = errors.Wrapf(err, "Get reserved ip status error, ip: %v", ip)
+		log.Errorln(err)
+		return err
+	}
 
-	// if present {
-	// 	log.Info("Ip is reserved, will not release to pool, ip: %v", ip)
-	// 	return nil
-	// }
+	if reserved {
+		log.Info("Ip is reserved, will not release to pool, ip: %v", ip)
+		return nil
+	}
 
 	// Unassign the address.  This handles the address already being unassigned
 	// in which case it is a no-op.
-	_, err := i.client.IPAM().ReleaseIPs(context.Background(), []caliconet.IP{ip})
-	if err != nil {
+	if _, err := i.client.IPAM().ReleaseIPs(context.Background(), []caliconet.IP{ip}); err != nil {
 		err = errors.Wrapf(err, "IP releasing error, ip: %v", ip)
 		log.Errorln(err)
 		return err

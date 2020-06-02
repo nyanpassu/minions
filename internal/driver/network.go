@@ -43,6 +43,7 @@ const (
 type NetworkDriver struct {
 	client         clientv3.Interface
 	dockerCli      *dockerClient.Client
+	ripam          ReservedIPManager
 	containerName  string
 	orchestratorID string
 	namespace      string
@@ -59,8 +60,13 @@ type NetworkDriver struct {
 	labelEndpoints bool
 }
 
+type containerAndIPAddress struct {
+	container dockerTypes.Container
+	ipAddress string
+}
+
 // NewNetworkDriver .
-func NewNetworkDriver(client clientv3.Interface, dockerCli *dockerClient.Client) network.Driver {
+func NewNetworkDriver(client clientv3.Interface, dockerCli *dockerClient.Client, ripam ReservedIPManager) network.Driver {
 	hostname, err := osutils.GetHostname()
 	if err != nil {
 		err = errors.Wrap(err, "Hostname fetching error")
@@ -70,6 +76,7 @@ func NewNetworkDriver(client clientv3.Interface, dockerCli *dockerClient.Client)
 	driver := NetworkDriver{
 		client:    client,
 		dockerCli: dockerCli,
+		ripam:     ripam,
 
 		// Orchestrator and container IDs used in our endpoint identification. These
 		// are fixed for libnetwork.  Unique endpoint identification is provided by
@@ -264,24 +271,32 @@ func (d NetworkDriver) DeleteNetwork(request *network.DeleteNetworkRequest) erro
 	return nil
 }
 
-func (d NetworkDriver) printDockerContainersAndEndpointId() {
-	log.Info("printDockerContainersAndEndpointId")
+func (d NetworkDriver) findDockerContainerByEndpointId(endpointID string) (containerAndIPAddress, error) {
 	containers, err := d.dockerCli.ContainerList(context.Background(), dockerTypes.ContainerListOptions{})
 	if err != nil {
-		log.Errorln(errors.Wrap(err, "ContainerList Error"))
-		return
+		err = errors.Wrap(err, "dockerCli ContainerList Error")
+		log.Errorln(err)
+		return containerAndIPAddress{}, err
 	}
 	for _, container := range containers {
-		log.Printf("containerID = %s", container.ID)
-		for networkName, network := range container.NetworkSettings.Networks {
-			log.Printf("networkName = %s, endpointID = %s", networkName, network.EndpointID)
+		for _, network := range container.NetworkSettings.Networks {
+			if endpointID == network.EndpointID {
+				return containerAndIPAddress{container, network.IPAddress}, nil
+			}
 		}
 	}
+	return containerAndIPAddress{}, errors.Errorf("find no container with endpintID = %s", endpointID)
+}
+
+func (containerAndIP containerAndIPAddress) reserveIPIfWithFixedIPLabel(ripam ReservedIPManager) error {
+	if containerAndIP.container.Labels[fixedIPLabel] == "true" {
+		return ripam.MarkReservedIP(context.Background(), containerAndIP.ipAddress)
+	}
+	return nil
 }
 
 func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*network.CreateEndpointResponse, error) {
 	logutils.JSONMessage("CreateEndpoint", request)
-	d.printDockerContainersAndEndpointId()
 
 	ctx := context.Background()
 	hostname, err := osutils.GetHostname()
@@ -462,7 +477,6 @@ func (d NetworkDriver) EndpointInfo(request *network.InfoRequest) (*network.Info
 
 func (d NetworkDriver) Join(request *network.JoinRequest) (*network.JoinResponse, error) {
 	logutils.JSONMessage("Join", request)
-	d.printDockerContainersAndEndpointId()
 
 	ctx := context.Background()
 	// 1) Set up a veth pair
@@ -549,8 +563,15 @@ func (d NetworkDriver) Join(request *network.JoinRequest) (*network.JoinResponse
 
 func (d NetworkDriver) Leave(request *network.LeaveRequest) error {
 	logutils.JSONMessage("Leave response", request)
+	containerAndIP, err := d.findDockerContainerByEndpointId(request.EndpointID)
+	if err != nil {
+		return err
+	}
+	// reserve ip here by container label
+	containerAndIP.reserveIPIfWithFixedIPLabel(d.ripam)
+
 	caliName := "cali" + request.EndpointID[:mathutils.MinInt(11, len(request.EndpointID))]
-	err := netns.RemoveVeth(caliName)
+	err = netns.RemoveVeth(caliName)
 	return err
 }
 
