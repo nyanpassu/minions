@@ -59,3 +59,9 @@ Make sure you can clone code by ssh protocol because libgit2 ask for it. So you 
 ```
 
 Now you will find minions was started in each node.
+
+# Install with github releases
+Unarchive and run command with sudo
+```shell
+sudo ./install.sh
+``` 
