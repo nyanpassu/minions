@@ -2,6 +2,7 @@ package lib
 
 import (
 	"context"
+	"fmt"
 	"net"
 
 	"github.com/coreos/etcd/clientv3"
@@ -18,6 +19,7 @@ import (
 // Client .
 type Client interface {
 	RequestFixedIP(poolID string) (string, error)
+	MarkFixedIPForContainer(containerID string, address string) error
 	ReleaseReservedIPByTiedContainerIDIfIdle(containerID string) error
 	MarkReserveRequestForIP(ip string) error
 }
@@ -152,6 +154,23 @@ func (client client) RequestFixedIP(poolID string) (address string, err error) {
 			"A single address should be assigned. Got %v", IPs)
 		return
 	}
+	return client.reserveAndFormatIPAddress(IPs[0])
+}
 
-	return IPs[0].String(), nil
+func (client client) reserveAndFormatIPAddress(ip caliconet.IP) (result string, err error) {
+	if ip.Version() == 4 {
+		// IPv4 address
+		result = fmt.Sprintf("%v/%v", ip, "32")
+	} else {
+		// IPv6 address
+		result = fmt.Sprintf("%v/%v", ip, "128")
+	}
+	address := fmt.Sprintf("%v", ip)
+	log.Infof("[MinionsClient.reserveAndFormatIPAddress] request ip %s success, reserving...", address)
+	err = client.etcd.Put(&ReservedIPAddress{Address: address})
+	return
+}
+
+func (client client) MarkFixedIPForContainer(containerID string, address string) (err error) {
+	return client.etcd.Put(&Container{ID: containerID, Address: address})
 }
