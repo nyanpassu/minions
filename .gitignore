@@ -14,3 +14,4 @@ clean.sh
 test*.py
 set*
 test.yaml
+minions
