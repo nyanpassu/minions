@@ -14,8 +14,9 @@ import (
 	"github.com/projectcalico/libcalico-go/lib/clientv3"
 
 	etcdV3 "github.com/coreos/etcd/clientv3"
-	"github.com/projecteru2/minions/internal/driver"
-	"github.com/projecteru2/minions/lib"
+	"github.com/projecteru2/minions/calico"
+	"github.com/projecteru2/minions/driver"
+	"github.com/projecteru2/minions/utils"
 	"github.com/projecteru2/minions/versioninfo"
 	log "github.com/sirupsen/logrus"
 )
@@ -50,7 +51,7 @@ func initializeClient() {
 		log.Fatalln(errors.Wrap(err, "Error while attempting to instantiate docker client from env"))
 	}
 
-	if etcd, err = lib.NewEtcdClient(strings.Split(config.Spec.EtcdConfig.EtcdEndpoints, ",")); err != nil {
+	if etcd, err = utils.NewEtcdClient(strings.Split(config.Spec.EtcdConfig.EtcdEndpoints, ",")); err != nil {
 		log.Fatalln(err)
 	}
 }
@@ -62,7 +63,7 @@ func serve() {
 
 	ripam := driver.NewReservedIPManager(etcd)
 	networkHandler := network.NewHandler(driver.NewNetworkDriver(client, dockerCli, ripam))
-	ipamHandler := ipam.NewHandler(driver.NewIpamDriver(client, ripam))
+	ipamHandler := ipam.NewHandler(driver.NewIpamDriver(calico.NewDriver(client), ripam))
 
 	go func(c chan error) {
 		log.Infoln("calico-net has started.")

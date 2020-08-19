@@ -9,6 +9,7 @@ import (
 
 // ReservedIPAddress .
 type ReservedIPAddress struct {
+	PoolID  string
 	Address string
 	version int64
 }
@@ -18,7 +19,10 @@ func (addr *ReservedIPAddress) Key() string {
 	if addr.Address == "" {
 		return ""
 	}
-	return fmt.Sprintf("/barrel/addresses/%s", addr.Address)
+	if addr.PoolID == "" {
+		return fmt.Sprintf("/barrel/addresses/%s", addr.Address)
+	}
+	return fmt.Sprintf("/barrel/pools/%s/addresses/%s", addr.PoolID, addr.Address)
 }
 
 // Read .
@@ -28,8 +32,8 @@ func (addr *ReservedIPAddress) Read(ekv *mvccpb.KeyValue) error {
 }
 
 // JSON .
-func (addr *ReservedIPAddress) JSON() string {
-	return fmt.Sprintf(`{"Address":"%s"}`, addr.Address)
+func (addr *ReservedIPAddress) JSON() ([]byte, error) {
+	return json.Marshal(addr)
 }
 
 // Version .

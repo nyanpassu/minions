@@ -10,6 +10,7 @@ import (
 // Container .
 type Container struct {
 	ID      string
+	PoolID  string
 	Address string
 	version int64
 }
@@ -29,9 +30,8 @@ func (container *Container) Read(ekv *mvccpb.KeyValue) error {
 }
 
 // JSON .
-func (container *Container) JSON() string {
-	// adopt json.Marshal will introduce handling error, so use json template
-	return fmt.Sprintf(`{"ID":"%s", "Address":"%s"}`, container.ID, container.Address)
+func (container *Container) JSON() ([]byte, error) {
+	return json.Marshal(container)
 }
 
 // Version .

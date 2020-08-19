@@ -9,6 +9,7 @@ import (
 
 // ReserveRequest .
 type ReserveRequest struct {
+	PoolID  string
 	Address string
 	version int64
 }
@@ -18,7 +19,10 @@ func (req *ReserveRequest) Key() string {
 	if req.Address == "" {
 		return ""
 	}
-	return fmt.Sprintf("/barrel/reservereq/%s", req.Address)
+	if req.PoolID == "" {
+		return fmt.Sprintf("/barrel/reservereqs/%s", req.Address)
+	}
+	return fmt.Sprintf("/barrel/pools/%s/reservereqs/%s", req.PoolID, req.Address)
 }
 
 // Read .
@@ -28,8 +32,8 @@ func (req *ReserveRequest) Read(ekv *mvccpb.KeyValue) error {
 }
 
 // JSON .
-func (req *ReserveRequest) JSON() string {
-	return fmt.Sprintf(`{"Address":"%s"}`, req.Address)
+func (req *ReserveRequest) JSON() ([]byte, error) {
+	return json.Marshal(req)
 }
 
 // Version .

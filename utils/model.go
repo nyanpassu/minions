@@ -1,4 +1,4 @@
-package lib
+package utils
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 type EtcdModel interface {
 	Key() string
 	Read(ekv *mvccpb.KeyValue) error
-	JSON() string
+	JSON() ([]byte, error)
 	Version() int64
 }
 
@@ -47,7 +47,11 @@ func (cli EtcdClient) Put(model EtcdModel) (err error) {
 		err = errors.New("can't generate valid key from model")
 		return
 	}
-	_, err = cli.Etcd.Put(context.Background(), key, model.JSON())
+	var bytes []byte
+	if bytes, err = model.JSON(); err != nil {
+		return
+	}
+	_, err = cli.Etcd.Put(context.Background(), key, string(bytes))
 	return
 }
 
@@ -60,7 +64,11 @@ func (cli EtcdClient) PutMulti(models ...EtcdModel) (err error) {
 			err = errors.New("can't generate valid key from model")
 			return
 		}
-		ops = append(ops, etcdv3.OpPut(key, model.JSON()))
+		var bytes []byte
+		if bytes, err = model.JSON(); err != nil {
+			return
+		}
+		ops = append(ops, etcdv3.OpPut(key, string(bytes)))
 	}
 	_, err = cli.Etcd.Txn(context.Background()).Then(ops...).Commit()
 	return
