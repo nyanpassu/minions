@@ -12,7 +12,7 @@ stages:
   - pack
 builds:
   build:
-    base: "golang:1.14.3-alpine3.11"
+    base: "golang:alpine"
     repo: "git@github.com:projecteru2/minions.git"
     version: "HEAD"
     dir: /go/src/github.com/projecteru2/minions
@@ -23,7 +23,7 @@ builds:
     cache:
       /go/src/github.com/projecteru2/minions/eru-minions: /usr/bin/eru-minions
   pack:
-    base: alpine:3.11
+    base: alpine
     labels:
       ERU: 1
       version: latest
