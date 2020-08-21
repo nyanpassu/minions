@@ -1,8 +1,9 @@
 package driver
 
 import (
-	"log"
 	"os"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -13,15 +14,20 @@ const (
 	// PoolIDV4 = "CalicoPoolIPv4"
 	// PoolIDV6 = "CalicoPoolIPv6"
 
-	CalicoLocalAddressSpace  = "CalicoLocalAddressSpace"
+	// CalicoLocalAddressSpace .
+	CalicoLocalAddressSpace = "CalicoLocalAddressSpace"
+	// CalicoGlobalAddressSpace .
 	CalicoGlobalAddressSpace = "CalicoGlobalAddressSpace"
+
+	fixedIPLabel = "fixed-ip"
 )
 
+// IFPrefix .
 var IFPrefix = "cali"
 
-func init() {
+func init() { // nolint
 	if os.Getenv("CALICO_LIBNETWORK_IFPREFIX") != "" {
 		IFPrefix = os.Getenv("CALICO_LIBNETWORK_IFPREFIX")
-		log.Println("Updated CALICO_LIBNETWORK_IFPREFIX to ", IFPrefix)
+		log.Infof("Updated CALICO_LIBNETWORK_IFPREFIX to %s", IFPrefix)
 	}
 }

@@ -14,15 +14,15 @@ import (
 	dockerNetworkTypes "github.com/docker/docker/api/types/network"
 	dockerClient "github.com/docker/docker/client"
 	"github.com/docker/go-plugins-helpers/network"
-	"github.com/pkg/errors"
+	"github.com/juju/errors"
 	api "github.com/projectcalico/libcalico-go/lib/apis/v3"
 	"github.com/projectcalico/libcalico-go/lib/clientv3"
 	caliconet "github.com/projectcalico/libcalico-go/lib/net"
-	"github.com/projecteru2/minions/lib"
+	"github.com/projecteru2/minions/barrel"
+	"github.com/projecteru2/minions/types"
 	log "github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	dockertypes "github.com/docker/docker/api/types"
 	libcalicoErrors "github.com/projectcalico/libcalico-go/lib/errors"
 	wepname "github.com/projectcalico/libcalico-go/lib/names"
 	"github.com/projectcalico/libcalico-go/lib/options"
@@ -34,18 +34,18 @@ import (
 )
 
 const (
-	DOCKER_LABEL_PREFIX       = "org.projectcalico.label."
-	LABEL_POLL_TIMEOUT_ENVKEY = "CALICO_LIBNETWORK_LABEL_POLL_TIMEOUT"
-	CREATE_PROFILES_ENVKEY    = "CALICO_LIBNETWORK_CREATE_PROFILES"
-	LABEL_ENDPOINTS_ENVKEY    = "CALICO_LIBNETWORK_LABEL_ENDPOINTS"
-	VETH_MTU_ENVKEY           = "CALICO_LIBNETWORK_VETH_MTU"
-	NAMESPACE_ENVKEY          = "CALICO_LIBNETWORK_NAMESPACE"
+	DOCKER_LABEL_PREFIX       = "org.projectcalico.label."             // nolint
+	LABEL_POLL_TIMEOUT_ENVKEY = "CALICO_LIBNETWORK_LABEL_POLL_TIMEOUT" // nolint
+	CREATE_PROFILES_ENVKEY    = "CALICO_LIBNETWORK_CREATE_PROFILES"    // nolint
+	LABEL_ENDPOINTS_ENVKEY    = "CALICO_LIBNETWORK_LABEL_ENDPOINTS"    // nolint
+	VETH_MTU_ENVKEY           = "CALICO_LIBNETWORK_VETH_MTU"           // nolint
+	NAMESPACE_ENVKEY          = "CALICO_LIBNETWORK_NAMESPACE"          // nolint
 )
 
 type NetworkDriver struct {
 	client         clientv3.Interface
 	dockerCli      *dockerClient.Client
-	ripam          ReservedIPManager
+	meta           barrel.MetaInterface
 	containerName  string
 	orchestratorID string
 	namespace      string
@@ -63,17 +63,17 @@ type NetworkDriver struct {
 }
 
 // NewNetworkDriver .
-func NewNetworkDriver(client clientv3.Interface, dockerCli *dockerClient.Client, ripam ReservedIPManager) network.Driver {
+func NewNetworkDriver(client clientv3.Interface, dockerCli *dockerClient.Client, meta barrel.MetaInterface) network.Driver {
 	hostname, err := osutils.GetHostname()
 	if err != nil {
-		err = errors.Wrap(err, "Hostname fetching error")
+		err = errors.Annotate(err, "Hostname fetching error")
 		log.Fatal(err)
 	}
 
 	driver := NetworkDriver{
 		client:    client,
 		dockerCli: dockerCli,
-		ripam:     ripam,
+		meta:      meta,
 
 		// Orchestrator and container IDs used in our endpoint identification. These
 		// are fixed for libnetwork.  Unique endpoint identification is provided by
@@ -233,59 +233,9 @@ func (d NetworkDriver) CreateNetwork(request *network.CreateNetworkRequest) erro
 	return d.populatePoolLabel(ps, request.NetworkID)
 }
 
-func (d NetworkDriver) populatePoolLabel(pools []string, networkID string) error {
-	ctx := context.Background()
-	poolClient := d.client.IPPools()
-	ipPools, err := poolClient.List(ctx, options.ListOptions{})
-	if err != nil {
-		log.Errorln(err)
-		return err
-	}
-	for _, ipPool := range ipPools.Items {
-		for _, cidr := range pools {
-			if ipPool.Spec.CIDR == cidr {
-				ann := ipPool.GetAnnotations()
-				if ann == nil {
-					ann = map[string]string{}
-				}
-				ann[DOCKER_LABEL_PREFIX+"network.ID"] = networkID
-				ipPool.SetAnnotations(ann)
-				_, err = poolClient.Update(ctx, &ipPool, options.SetOptions{})
-				if err != nil {
-					log.Errorln(err)
-					return err
-				}
-			}
-		}
-	}
-	return nil
-}
-
 func (d NetworkDriver) DeleteNetwork(request *network.DeleteNetworkRequest) error {
 	logutils.JSONMessage("DeleteNetwork", request)
 	return nil
-}
-
-func (d NetworkDriver) findDockerContainerByEndpointId(endpointID string) (dockerTypes.Container, *dockerNetworkTypes.EndpointSettings, error) {
-	containers, err := d.dockerCli.ContainerList(context.Background(), dockerTypes.ContainerListOptions{})
-	if err != nil {
-		err = errors.Wrap(err, "dockerCli ContainerList Error")
-		log.Errorln(err)
-		return dockerTypes.Container{}, nil, err
-	}
-	for _, container := range containers {
-		for _, network := range container.NetworkSettings.Networks {
-			if endpointID == network.EndpointID {
-				return container, network, nil
-			}
-		}
-	}
-	return dockerTypes.Container{}, nil, errors.Errorf("find no container with endpintID = %s", endpointID)
-}
-
-func containerHasFixedIPLabel(container dockerTypes.Container) bool {
-	value, hasFixedIPLabel := container.Labels[fixedIPLabel]
-	return hasFixedIPLabel && strings.ToLower(value) != "false" && value != "0"
 }
 
 func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*network.CreateEndpointResponse, error) {
@@ -294,7 +244,7 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 	ctx := context.Background()
 	hostname, err := osutils.GetHostname()
 	if err != nil {
-		err = errors.Wrap(err, "Hostname fetching error")
+		err = errors.Annotate(err, "Hostname fetching error")
 		log.Errorln(err)
 		return nil, err
 	}
@@ -313,7 +263,7 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 		log.Debugf("Parsed IP %v from (%v) \n", ip4, request.Interface.Address)
 
 		if err != nil {
-			err = errors.Wrapf(err, "Parsing %v as CIDR failed", request.Interface.Address)
+			err = errors.Annotatef(err, "Parsing %v as CIDR failed", request.Interface.Address)
 			log.Errorln(err)
 			return nil, err
 		}
@@ -326,7 +276,7 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 		ip6, ipnet, err := net.ParseCIDR(request.Interface.AddressIPv6)
 		log.Debugf("Parsed IP %v from (%v) \n", ip6, request.Interface.AddressIPv6)
 		if err != nil {
-			err = errors.Wrapf(err, "Parsing %v as CIDR failed", request.Interface.AddressIPv6)
+			err = errors.Annotatef(err, "Parsing %v as CIDR failed", request.Interface.AddressIPv6)
 			log.Errorln(err)
 			return nil, err
 		}
@@ -351,7 +301,7 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 	var mac net.HardwareAddr
 	if request.Interface.MacAddress != "" {
 		if mac, err = net.ParseMAC(request.Interface.MacAddress); err != nil {
-			err = errors.Wrap(err, "Error parsing MAC address")
+			err = errors.Annotate(err, "Error parsing MAC address")
 			log.Errorln(err)
 			return nil, err
 		}
@@ -363,7 +313,7 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 
 	pools, err := d.client.IPPools().List(ctx, options.ListOptions{})
 	if err != nil {
-		err = errors.Wrapf(err, "Network %v gather error", request.NetworkID)
+		err = errors.Annotatef(err, "Network %v gather error", request.NetworkID)
 		log.Errorln(err)
 		return nil, err
 	}
@@ -379,12 +329,11 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 		}
 	}
 	if !f {
-		err := errors.New("The requested subnet must match the CIDR of a configured Calico IP Pool.")
-		log.Errorln(err)
-		return nil, err
+		log.Errorln(types.ErrCIDRNotInPool)
+		return nil, types.ErrCIDRNotInPool
 	}
 
-	if d.createProfiles {
+	if d.createProfiles { // nolint
 		// Now that we know the network name, set it on the endpoint.
 		endpoint.Spec.Profiles = append(endpoint.Spec.Profiles, networkName)
 
@@ -417,7 +366,7 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 	// Create the endpoint last to minimize side-effects if something goes wrong.
 	endpoint, err = d.client.WorkloadEndpoints().Create(ctx, endpoint, options.SetOptions{})
 	if err != nil {
-		err = errors.Wrapf(err, "Workload endpoints creation error, data: %+v", endpoint)
+		err = errors.Annotatef(err, "Workload endpoints creation error, data: %+v", endpoint)
 		log.Errorln(err)
 		return nil, err
 	}
@@ -439,7 +388,7 @@ func (d NetworkDriver) DeleteEndpoint(request *network.DeleteEndpointRequest) er
 
 	hostname, err := osutils.GetHostname()
 	if err != nil {
-		err = errors.Wrap(err, "Hostname fetching error")
+		err = errors.Annotatef(err, "Hostname fetching error")
 		log.Errorln(err)
 		return err
 	}
@@ -453,7 +402,7 @@ func (d NetworkDriver) DeleteEndpoint(request *network.DeleteEndpointRequest) er
 	if _, err = d.client.WorkloadEndpoints().Delete(
 		context.Background(), d.namespace,
 		wepName, options.DeleteOptions{}); err != nil {
-		err = errors.Wrapf(err, "Endpoint %v removal error", request.EndpointID)
+		err = errors.Annotatef(err, "Endpoint %v removal error", request.EndpointID)
 		log.Errorln(err)
 		return err
 	}
@@ -481,7 +430,7 @@ func (d NetworkDriver) Join(request *network.JoinRequest) (*network.JoinResponse
 	tempInterfaceName := "temp" + prefix
 
 	if err = netns.CreateVeth(hostInterfaceName, tempInterfaceName, d.vethMTU); err != nil {
-		err = errors.Wrapf(
+		err = errors.Annotatef(
 			err, "Veth creation error, hostInterfaceName=%v, tempInterfaceName=%v, vethMTU=%v",
 			hostInterfaceName, tempInterfaceName, d.vethMTU)
 		log.Errorln(err)
@@ -562,7 +511,7 @@ func (d NetworkDriver) findPoolByNetworkID(networkID string) (*api.IPPool, error
 	)
 
 	if pools, err = d.client.IPPools().List(context.Background(), options.ListOptions{}); err != nil {
-		err = errors.Wrapf(err, "Network %v gather error", networkID)
+		err = errors.Annotatef(err, "Network %v gather error", networkID)
 		log.Errorln(err)
 		return nil, err
 	}
@@ -586,7 +535,7 @@ func (d NetworkDriver) Leave(request *network.LeaveRequest) error {
 		shouldReserveIP  bool
 		err              error
 	)
-	if container, endpointSettings, err = d.findDockerContainerByEndpointId(request.EndpointID); err != nil {
+	if container, endpointSettings, err = d.findDockerContainerByEndpointID(request.EndpointID); err != nil {
 		return err
 	}
 
@@ -594,18 +543,26 @@ func (d NetworkDriver) Leave(request *network.LeaveRequest) error {
 		return err
 	}
 
-	if shouldReserveIP, err = d.shouldReserveIP(container, lib.ReserveRequest{
-		PoolID:  pool.Name,
-		Address: endpointSettings.IPAddress,
-	}); err != nil {
+	if shouldReserveIP, err = d.shouldReserveIP(
+		container,
+		&types.ReserveRequest{
+			Base: types.Base{
+				PoolID:  pool.Name,
+				Address: endpointSettings.IPAddress,
+			},
+		}); err != nil {
 		// we move on when trying to find out whether should reserve by reserve request mark
 		log.Errorln(err)
 	}
 	if shouldReserveIP {
-		if err = d.ripam.Reserve(lib.ReservedIPAddress{
-			PoolID:  pool.Name,
-			Address: endpointSettings.IPAddress,
-		}, container.ID); err != nil {
+		if err = d.meta.ReserveIPforContainer(
+			context.Background(),
+			&types.ReservedIPAddress{
+				Base: types.Base{
+					PoolID:  pool.Name,
+					Address: endpointSettings.IPAddress,
+				},
+			}, container.ID); err != nil {
 			// we move on when reserve is failed
 			log.Errorln(err)
 		}
@@ -615,19 +572,19 @@ func (d NetworkDriver) Leave(request *network.LeaveRequest) error {
 	return netns.RemoveVeth(caliName)
 }
 
-func (d NetworkDriver) shouldReserveIP(container dockerTypes.Container, address lib.ReserveRequest) (shouldReserve bool, err error) {
+func (d NetworkDriver) shouldReserveIP(container dockerTypes.Container, address *types.ReserveRequest) (shouldReserve bool, err error) {
 	// reserve ip here by container label
 	if containerHasFixedIPLabel(container) {
 		shouldReserve = true
 		// we should consume the mark
-		if _, err := d.ripam.ConsumeRequestMarkIfPresent(address); err != nil {
+		if _, err := d.meta.ConsumeRequestMarkIfPresent(context.Background(), address); err != nil {
 			log.Errorf("[Network.ConsumeRequestMarkIfPresent] remove request mark error, %v", err)
 		}
 		log.Infof("[Network.ConsumeRequestMarkIfPresent] container has fixed-ip label, shouldReserve ip(%v) = %v", address, shouldReserve)
 		return
 	}
 	// reserve ip here by reserve request mark
-	if shouldReserve, err = d.ripam.ConsumeRequestMarkIfPresent(address); err != nil {
+	if shouldReserve, err = d.meta.ConsumeRequestMarkIfPresent(context.Background(), address); err != nil {
 		// ensure shouldReserve is false here when err is not nil
 		log.Errorf("[Network.ConsumeRequestMarkIfPresent] error, %v", err)
 		shouldReserve = false
@@ -682,7 +639,7 @@ func (d NetworkDriver) populateWorkloadEndpointWithLabels(request *network.Creat
 	networkID := request.NetworkID
 	endpointID := request.EndpointID
 
-	retrySleep := time.Duration(100 * time.Millisecond)
+	retrySleep := 100 * time.Millisecond
 
 	start := time.Now()
 	deadline := start.Add(d.labelPollTimeout)
@@ -703,9 +660,9 @@ RETRY_NETWORK_INSPECT:
 	}
 
 	// inspect our custom network
-	networkData, err := d.dockerCli.NetworkInspect(ctx, networkID, dockertypes.NetworkInspectOptions{})
+	networkData, err := d.dockerCli.NetworkInspect(ctx, networkID)
 	if err != nil {
-		err = errors.Wrapf(err, "Error inspecting network %s - retrying (T=%s)", networkID, time.Since(start))
+		err = errors.Annotatef(err, "Error inspecting network %s - retrying (T=%s)", networkID, time.Since(start))
 		log.Warningln(err)
 		// was unable to inspect network, let's retry
 		time.Sleep(retrySleep)
@@ -753,7 +710,7 @@ RETRY_CONTAINER_INSPECT:
 
 	containerInfo, err := d.dockerCli.ContainerInspect(ctx, containerID)
 	if err != nil {
-		err = errors.Wrapf(err, "Error inspecting container %s for labels - retrying (T=%s)", containerID, time.Since(start))
+		err = errors.Annotatef(err, "Error inspecting container %s for labels - retrying (T=%s)", containerID, time.Since(start))
 		log.Warningln(err)
 		// was unable to inspect container, let's retry
 		time.Sleep(100 * time.Millisecond)
@@ -792,11 +749,11 @@ RETRY_UPDATE_ENDPOINT:
 	// lets update the workloadEndpoint
 	_, err = d.client.WorkloadEndpoints().Update(ctx, endpoint, options.SetOptions{})
 	if err != nil {
-		err = errors.Wrapf(err, "Unable to update WorkloadEndpoint with labels (T=%s)", time.Since(start))
+		err = errors.Annotatef(err, "Unable to update WorkloadEndpoint with labels (T=%s)", time.Since(start))
 		log.Warningln(err)
 		endpoint, err = d.client.WorkloadEndpoints().Get(ctx, endpoint.Namespace, endpoint.Name, options.GetOptions{})
 		if err != nil {
-			err = errors.Wrapf(err, "Unable to get WorkloadEndpoint (T=%s)", time.Since(start))
+			err = errors.Annotatef(err, "Unable to get WorkloadEndpoint (T=%s)", time.Since(start))
 			log.Errorln(err)
 			return
 		}
@@ -809,29 +766,6 @@ RETRY_UPDATE_ENDPOINT:
 
 }
 
-// Returns the label poll timeout. Default is returned unless an environment
-// key is set to a valid time.Duration.
-func getLabelPollTimeout() time.Duration {
-	// 5 seconds should be more than enough for this plugin to get the
-	// container labels. More info in func populateWorkloadEndpointWithLabels
-	defaultTimeout := time.Duration(5 * time.Second)
-
-	timeoutVal := os.Getenv(LABEL_POLL_TIMEOUT_ENVKEY)
-	if timeoutVal == "" {
-		return defaultTimeout
-	}
-
-	labelPollTimeout, err := time.ParseDuration(timeoutVal)
-	if err != nil {
-		err = errors.Wrapf(err, "Label poll timeout specified via env key %s is invalid, using default %s",
-			LABEL_POLL_TIMEOUT_ENVKEY, defaultTimeout)
-		log.Warningln(err)
-		return defaultTimeout
-	}
-	log.Infof("Using custom label poll timeout: %s", labelPollTimeout)
-	return labelPollTimeout
-}
-
 func (d NetworkDriver) generateEndpointName(hostname, endpointID string) (string, error) {
 	wepNameIdent := wepname.WorkloadEndpointIdentifiers{
 		Node:         hostname,
@@ -839,4 +773,49 @@ func (d NetworkDriver) generateEndpointName(hostname, endpointID string) (string
 		Endpoint:     endpointID,
 	}
 	return wepNameIdent.CalculateWorkloadEndpointName(false)
+}
+
+func (d NetworkDriver) findDockerContainerByEndpointID(endpointID string) (dockerTypes.Container, *dockerNetworkTypes.EndpointSettings, error) {
+	containers, err := d.dockerCli.ContainerList(context.Background(), dockerTypes.ContainerListOptions{})
+	if err != nil {
+		err = errors.Annotate(err, "dockerCli ContainerList Error")
+		log.Errorln(err)
+		return dockerTypes.Container{}, nil, err
+	}
+	for _, container := range containers {
+		for _, network := range container.NetworkSettings.Networks {
+			if endpointID == network.EndpointID {
+				return container, network, nil
+			}
+		}
+	}
+	return dockerTypes.Container{}, nil, errors.Errorf("find no container with endpintID = %s", endpointID)
+}
+
+func (d NetworkDriver) populatePoolLabel(pools []string, networkID string) error {
+	ctx := context.Background()
+	poolClient := d.client.IPPools()
+	ipPools, err := poolClient.List(ctx, options.ListOptions{})
+	if err != nil {
+		log.Errorln(err)
+		return err
+	}
+	for _, ipPool := range ipPools.Items {
+		for _, cidr := range pools {
+			if ipPool.Spec.CIDR == cidr {
+				ann := ipPool.GetAnnotations()
+				if ann == nil {
+					ann = map[string]string{}
+				}
+				ann[DOCKER_LABEL_PREFIX+"network.ID"] = networkID
+				ipPool.SetAnnotations(ann)
+				// TODO need remove nolint and use unittest to cover this case
+				if _, err = poolClient.Update(ctx, &ipPool, options.SetOptions{}); err != nil { // nolint
+					log.Errorln(err)
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }

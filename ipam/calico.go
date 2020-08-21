@@ -1,47 +1,32 @@
-package calico
+package ipam
 
 import (
 	"context"
 	"net"
 
-	"github.com/pkg/errors"
+	"github.com/juju/errors"
 	apiv3 "github.com/projectcalico/libcalico-go/lib/apis/v3"
 	"github.com/projectcalico/libcalico-go/lib/clientv3"
 	calicoipam "github.com/projectcalico/libcalico-go/lib/ipam"
 	caliconet "github.com/projectcalico/libcalico-go/lib/net"
 	"github.com/projectcalico/libcalico-go/lib/options"
 	osutils "github.com/projectcalico/libnetwork-plugin/utils/os"
+	"github.com/projecteru2/minions/types"
 	log "github.com/sirupsen/logrus"
 )
 
-// Driver .
-type Driver interface {
-	AssignIP(poolName, address string) (caliconet.IP, error)
-	AutoAssign(poolName string) (caliconet.IP, error)
-	GetIPPool(poolName string) (*apiv3.IPPool, error)
-	ReleaseIP(poolName string, address string) error
-	IPPools() (*apiv3.IPPoolList, error)
-	RequestPool(cidr string) (Pool, error)
-	RequestDefaultPool(v6 bool) Pool
+// CalicoIPAM .
+type CalicoIPAM struct {
+	cliv3 clientv3.Interface
 }
 
-// Pool .
-type Pool struct {
-	CIDR    string
-	Name    string
-	Gateway string
+// NewCalicoIPAM .
+func NewCalicoIPAM(cliv3 clientv3.Interface) *CalicoIPAM {
+	return &CalicoIPAM{cliv3}
 }
 
-type calicoImpl struct {
-	client clientv3.Interface
-}
-
-// NewDriver .
-func NewDriver(client clientv3.Interface) Driver {
-	return calicoImpl{client}
-}
-
-func (impl calicoImpl) AssignIP(poolName string, address string) (caliconet.IP, error) {
+// AssignIP .
+func (c CalicoIPAM) AssignIP(poolName string, address string) (caliconet.IP, error) {
 	var err error
 
 	var hostname string
@@ -59,14 +44,15 @@ func (impl calicoImpl) AssignIP(poolName string, address string) (caliconet.IP, 
 		Hostname: hostname,
 	}
 
-	if err = impl.client.IPAM().AssignIP(context.Background(), ipArgs); err != nil {
+	if err = c.cliv3.IPAM().AssignIP(context.Background(), ipArgs); err != nil {
 		log.Errorf("IP assignment error, data: %+v\n", ipArgs)
 		return caliconet.IP{}, err
 	}
 	return caliconet.IP{IP: ip}, nil
 }
 
-func (impl calicoImpl) AutoAssign(poolName string) (caliconet.IP, error) {
+// AutoAssign .
+func (c CalicoIPAM) AutoAssign(poolName string) (caliconet.IP, error) {
 	var err error
 
 	// No address requested, so auto assign from our pools.
@@ -77,25 +63,24 @@ func (impl calicoImpl) AutoAssign(poolName string) (caliconet.IP, error) {
 		return caliconet.IP{}, err
 	}
 
-	var IPs []caliconet.IP
-
 	// If the poolID isn't the fixed one then find the pool to assign from.
 	// poolV4 defaults to nil to assign from across all pools.
 	var poolV4 []caliconet.IPNet
 
 	var poolV6 []caliconet.IPNet
 	var numIPv4, numIPv6 int
-	if poolName == PoolIDV4 {
+	switch poolName {
+	case PoolIDV4:
 		numIPv4 = 1
 		numIPv6 = 0
-	} else if poolName == PoolIDV6 {
+	case PoolIDV6:
 		numIPv4 = 0
 		numIPv6 = 1
-	} else {
+	default:
 		var version int
 
 		var ipPool *apiv3.IPPool
-		if ipPool, err = impl.GetIPPool(poolName); err != nil {
+		if ipPool, err = c.GetIPPool(poolName); err != nil {
 			log.Errorf("Invalid Pool - %v", poolName)
 			return caliconet.IP{}, err
 		}
@@ -123,7 +108,7 @@ func (impl calicoImpl) AutoAssign(poolName string) (caliconet.IP, error) {
 	// Otherwise, it will be set to the Calico pool to assign from.
 	var IPsV4 []caliconet.IP
 	var IPsV6 []caliconet.IP
-	if IPsV4, IPsV6, err = impl.client.IPAM().AutoAssign(
+	if IPsV4, IPsV6, err = c.cliv3.IPAM().AutoAssign(
 		context.Background(),
 		calicoipam.AutoAssignArgs{
 			Num4:      numIPv4,
@@ -136,7 +121,7 @@ func (impl calicoImpl) AutoAssign(poolName string) (caliconet.IP, error) {
 		log.Errorln("IP assignment error")
 		return caliconet.IP{}, err
 	}
-	IPs = append(IPsV4, IPsV6...)
+	IPs := append(IPsV4, IPsV6...)
 
 	// We should only have one IP address assigned at this point.
 	if len(IPs) != 1 {
@@ -146,15 +131,17 @@ func (impl calicoImpl) AutoAssign(poolName string) (caliconet.IP, error) {
 	return IPs[0], nil
 }
 
-func (impl calicoImpl) GetIPPool(poolName string) (*apiv3.IPPool, error) {
-	return impl.client.IPPools().Get(context.Background(), poolName, options.GetOptions{})
+// GetIPPool .
+func (c CalicoIPAM) GetIPPool(poolName string) (*apiv3.IPPool, error) {
+	return c.cliv3.IPPools().Get(context.Background(), poolName, options.GetOptions{})
 }
 
-func (impl calicoImpl) ReleaseIP(poolName string, address string) error {
+// ReleaseIP .
+func (c CalicoIPAM) ReleaseIP(poolName string, address string) error {
 	ip := caliconet.IP{IP: net.ParseIP(address)}
 	// Unassign the address.  This handles the address already being unassigned
 	// in which case it is a no-op.
-	if _, err := impl.client.IPAM().ReleaseIPs(context.Background(), []caliconet.IP{ip}); err != nil {
+	if _, err := c.cliv3.IPAM().ReleaseIPs(context.Background(), []caliconet.IP{ip}); err != nil {
 		log.Errorf("IP releasing error, ip: %v", ip)
 		return err
 	}
@@ -162,11 +149,13 @@ func (impl calicoImpl) ReleaseIP(poolName string, address string) error {
 	return nil
 }
 
-func (impl calicoImpl) IPPools() (*apiv3.IPPoolList, error) {
-	return impl.client.IPPools().List(context.Background(), options.ListOptions{})
+// IPPools .
+func (c CalicoIPAM) IPPools() (*apiv3.IPPoolList, error) {
+	return c.cliv3.IPPools().List(context.Background(), options.ListOptions{})
 }
 
-func (impl calicoImpl) RequestPool(cidr string) (Pool, error) {
+// RequestPool .
+func (c CalicoIPAM) RequestPool(cidr string) (*types.Pool, error) {
 	var (
 		ipNet *caliconet.IPNet
 		pools *apiv3.IPPoolList
@@ -175,12 +164,12 @@ func (impl calicoImpl) RequestPool(cidr string) (Pool, error) {
 
 	if _, ipNet, err = caliconet.ParseCIDR(cidr); err != nil {
 		log.Errorf("Invalid CIDR: %s, %v", cidr, err)
-		return Pool{}, err
+		return nil, err
 	}
 
-	if pools, err = impl.IPPools(); err != nil {
+	if pools, err = c.IPPools(); err != nil {
 		log.Errorf("[CalicoDriver::RequestPool] Get pools error, %v", err)
-		return Pool{}, err
+		return nil, err
 	}
 
 	for _, p := range pools.Items {
@@ -191,7 +180,7 @@ func (impl calicoImpl) RequestPool(cidr string) (Pool, error) {
 			} else {
 				gateway = "::/0"
 			}
-			return Pool{
+			return &types.Pool{
 				CIDR:    p.Spec.CIDR,
 				Name:    p.Name,
 				Gateway: gateway,
@@ -199,25 +188,24 @@ func (impl calicoImpl) RequestPool(cidr string) (Pool, error) {
 		}
 	}
 
-	return Pool{}, errors.Errorf("The requested subnet(%s) didn't match any CIDR of a "+
+	return nil, errors.Errorf("The requested subnet(%s) didn't match any CIDR of a "+
 		"configured Calico IP Pool.", cidr)
-
 }
 
-func (impl calicoImpl) RequestDefaultPool(v6 bool) Pool {
+// RequestDefaultPool .
+func (c CalicoIPAM) RequestDefaultPool(v6 bool) *types.Pool {
 	if v6 {
 		// Default the poolID to the fixed value.
-		return Pool{
+		return &types.Pool{
 			Name:    PoolIDV6,
 			CIDR:    "::/0",
 			Gateway: "::/0",
 		}
-	} else {
-		// Default the poolID to the fixed value.
-		return Pool{
-			Name:    PoolIDV4,
-			CIDR:    "0.0.0.0/0",
-			Gateway: "0.0.0.0/0",
-		}
+	}
+	// Default the poolID to the fixed value.
+	return &types.Pool{
+		Name:    PoolIDV4,
+		CIDR:    "0.0.0.0/0",
+		Gateway: "0.0.0.0/0",
 	}
 }
