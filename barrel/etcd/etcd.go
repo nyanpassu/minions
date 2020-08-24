@@ -8,7 +8,7 @@ import (
 
 	"github.com/projectcalico/libcalico-go/lib/apiconfig"
 	"github.com/projecteru2/minions/types"
-	"go.etcd.io/etcd/v3/clientv3"
+	"github.com/etcd-io/etcd/clientv3"
 )
 
 const (
@@ -18,12 +18,6 @@ const (
 	clientTimeout    = 10 * time.Second
 	keepaliveTime    = 30 * time.Second
 	keepaliveTimeout = 10 * time.Second
-
-	barrelAddressKeyPrefx             = "/barrel/addresses/%s"
-	barrelPoolAddressKeyPrefx         = "/barrel/pools/%s/addresses/%s"
-	barrelContainersKeyPrefx          = "/barrel/containers/%s"
-	barrelReserverRequestKeyPrefx     = "/barrel/reservereqs/%s"
-	barrelPoolReserverRequestKeyPrefx = "/barrel/pools/%s/reservereqs/%s"
 )
 
 // Etcd .

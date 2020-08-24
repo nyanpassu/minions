@@ -7,7 +7,7 @@ import (
 	dockerClient "github.com/docker/docker/client"
 	pluginIPAM "github.com/docker/go-plugins-helpers/ipam"
 	pluginNetwork "github.com/docker/go-plugins-helpers/network"
-	"github.com/juju/errors"
+	"github.com/pkg/errors"
 	"github.com/projectcalico/libcalico-go/lib/apiconfig"
 	calicov3 "github.com/projectcalico/libcalico-go/lib/clientv3"
 	cli "github.com/urfave/cli/v2"

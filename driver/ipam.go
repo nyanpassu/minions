@@ -6,7 +6,7 @@ import (
 	"net"
 
 	pluginIPAM "github.com/docker/go-plugins-helpers/ipam"
-	"github.com/juju/errors"
+	"github.com/pkg/errors"
 	caliconet "github.com/projectcalico/libcalico-go/lib/net"
 	logutils "github.com/projectcalico/libnetwork-plugin/utils/log"
 	"github.com/projecteru2/minions/barrel"
@@ -124,7 +124,7 @@ func (i IPAMDriver) RequestAddress(request *pluginIPAM.RequestAddressRequest) (*
 	if _, err := i.meta.ConsumeRequestMarkIfPresent(
 		context.Background(),
 		&types.ReserveRequest{
-			Base: types.Base{
+			ReservedAddress: types.ReservedAddress{
 				PoolID:  request.PoolID,
 				Address: ip,
 			},
@@ -148,11 +148,9 @@ func (i IPAMDriver) ReleaseAddress(request *pluginIPAM.ReleaseAddressRequest) er
 	logutils.JSONMessage("ReleaseAddress", request)
 	reserved, err := i.meta.IPIsReserved(
 		context.Background(),
-		&types.ReservedIPAddress{
-			Base: types.Base{
-				PoolID:  request.PoolID,
-				Address: request.Address,
-			},
+		&types.ReservedAddress{
+			PoolID:  request.PoolID,
+			Address: request.Address,
 		})
 	if err != nil {
 		log.Errorf("Get reserved ip status error, ip: %v", request.Address)
@@ -179,11 +177,9 @@ func (i IPAMDriver) requestIP(request *pluginIPAM.RequestAddressRequest) (calico
 	var acquired bool
 	if acquired, err = i.meta.AquireIfReserved(
 		context.Background(),
-		&types.ReservedIPAddress{
-			Base: types.Base{
-				PoolID:  request.PoolID,
-				Address: request.Address,
-			},
+		&types.ReservedAddress{
+			PoolID:  request.PoolID,
+			Address: request.Address,
 		}); err != nil {
 		return caliconet.IP{}, err
 	}

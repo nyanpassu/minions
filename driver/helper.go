@@ -7,7 +7,7 @@ import (
 	"time"
 
 	dockerTypes "github.com/docker/docker/api/types"
-	"github.com/juju/errors"
+	"github.com/pkg/errors"
 	caliconet "github.com/projectcalico/libcalico-go/lib/net"
 	log "github.com/sirupsen/logrus"
 )
@@ -49,7 +49,7 @@ func getLabelPollTimeout() time.Duration {
 
 	labelPollTimeout, err := time.ParseDuration(timeoutVal)
 	if err != nil {
-		err = errors.Annotatef(err, "Label poll timeout specified via env key %s is invalid, using default %s",
+		err = errors.Wrapf(err, "Label poll timeout specified via env key %s is invalid, using default %s",
 			LABEL_POLL_TIMEOUT_ENVKEY, defaultTimeout)
 		log.Warningln(err)
 		return defaultTimeout

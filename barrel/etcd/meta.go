@@ -4,14 +4,15 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/etcd-io/etcd/clientv3"
 	"github.com/projecteru2/minions/types"
-	"go.etcd.io/etcd/v3/clientv3"
 )
 
 // ReserveIPforContainer .
-func (e *Etcd) ReserveIPforContainer(ctx context.Context, IP *types.ReservedIPAddress, ID string) error {
-	container := &types.Container{
-		ID: ID, Base: types.Base{
+func (e *Etcd) ReserveIPforContainer(ctx context.Context, IP *types.ReservedAddress, ID string) error {
+	container := &types.ContainerInfo{
+		ID: ID,
+		ReservedAddress: types.ReservedAddress{
 			PoolID:  IP.PoolID,
 			Address: IP.Address,
 		},
@@ -24,7 +25,7 @@ func (e *Etcd) ReserveIPforContainer(ctx context.Context, IP *types.ReservedIPAd
 	if err != nil {
 		return err
 	}
-	containerKey := fmt.Sprintf(barrelContainersKeyPrefx, container.ID)
+	containerKey := keyOfContainerInfo(container)
 	containerValue, err := container.JSON()
 	if err != nil {
 		return err
@@ -39,7 +40,7 @@ func (e *Etcd) ReserveIPforContainer(ctx context.Context, IP *types.ReservedIPAd
 }
 
 // IPIsReserved .
-func (e *Etcd) IPIsReserved(ctx context.Context, IP *types.ReservedIPAddress) (bool, error) {
+func (e *Etcd) IPIsReserved(ctx context.Context, IP *types.ReservedAddress) (bool, error) {
 	ipKey := fmt.Sprintf(barrelAddressKeyPrefx, IP.Address)
 	if IP.PoolID != "" {
 		ipKey = fmt.Sprintf(barrelPoolAddressKeyPrefx, IP.PoolID, IP.Address)
@@ -67,7 +68,7 @@ func (e *Etcd) ConsumeRequestMarkIfPresent(ctx context.Context, req *types.Reser
 }
 
 // AquireIfReserved .
-func (e *Etcd) AquireIfReserved(ctx context.Context, IP *types.ReservedIPAddress) (bool, error) {
+func (e *Etcd) AquireIfReserved(ctx context.Context, IP *types.ReservedAddress) (bool, error) {
 	ipKey := fmt.Sprintf(barrelAddressKeyPrefx, IP.Address)
 	if IP.PoolID != "" {
 		ipKey = fmt.Sprintf(barrelPoolAddressKeyPrefx, IP.PoolID, IP.Address)

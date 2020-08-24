@@ -1,6 +1,6 @@
 package types
 
-import "github.com/juju/errors"
+import "github.com/pkg/errors"
 
 var (
 	ErrNoOps         = errors.New("No ops")

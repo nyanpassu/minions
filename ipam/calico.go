@@ -4,7 +4,7 @@ import (
 	"context"
 	"net"
 
-	"github.com/juju/errors"
+	"github.com/pkg/errors"
 	apiv3 "github.com/projectcalico/libcalico-go/lib/apis/v3"
 	"github.com/projectcalico/libcalico-go/lib/clientv3"
 	calicoipam "github.com/projectcalico/libcalico-go/lib/ipam"

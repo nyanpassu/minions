@@ -14,7 +14,7 @@ import (
 	dockerNetworkTypes "github.com/docker/docker/api/types/network"
 	dockerClient "github.com/docker/docker/client"
 	"github.com/docker/go-plugins-helpers/network"
-	"github.com/juju/errors"
+	"github.com/pkg/errors"
 	api "github.com/projectcalico/libcalico-go/lib/apis/v3"
 	"github.com/projectcalico/libcalico-go/lib/clientv3"
 	caliconet "github.com/projectcalico/libcalico-go/lib/net"
@@ -244,7 +244,7 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 	ctx := context.Background()
 	hostname, err := osutils.GetHostname()
 	if err != nil {
-		err = errors.Annotate(err, "Hostname fetching error")
+		err = errors.Wrap(err, "Hostname fetching error")
 		log.Errorln(err)
 		return nil, err
 	}
@@ -366,8 +366,7 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 	// Create the endpoint last to minimize side-effects if something goes wrong.
 	endpoint, err = d.client.WorkloadEndpoints().Create(ctx, endpoint, options.SetOptions{})
 	if err != nil {
-		err = errors.Annotatef(err, "Workload endpoints creation error, data: %+v", endpoint)
-		log.Errorln(err)
+		log.Errorf("Workload endpoints creation error, data: %+v, %v", endpoint, err)
 		return nil, err
 	}
 
@@ -778,8 +777,7 @@ func (d NetworkDriver) generateEndpointName(hostname, endpointID string) (string
 func (d NetworkDriver) findDockerContainerByEndpointID(endpointID string) (dockerTypes.Container, *dockerNetworkTypes.EndpointSettings, error) {
 	containers, err := d.dockerCli.ContainerList(context.Background(), dockerTypes.ContainerListOptions{})
 	if err != nil {
-		err = errors.Annotate(err, "dockerCli ContainerList Error")
-		log.Errorln(err)
+		log.Errorf("dockerCli ContainerList Error, %v", err)
 		return dockerTypes.Container{}, nil, err
 	}
 	for _, container := range containers {
