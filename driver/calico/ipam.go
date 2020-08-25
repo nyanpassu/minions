@@ -1,4 +1,4 @@
-package ipam
+package calico
 
 import (
 	"context"
