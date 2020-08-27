@@ -43,8 +43,8 @@ const (
 	NAMESPACE_ENVKEY          = "CALICO_LIBNETWORK_NAMESPACE"          // nolint
 )
 
-// NetworkDriver .
-type NetworkDriver struct {
+// Driver .
+type Driver struct {
 	client         clientv3.Interface
 	dockerCli      *dockerClient.Client
 	containerName  string
@@ -67,13 +67,13 @@ type NetworkDriver struct {
 func NewNetworkDriver(
 	client clientv3.Interface,
 	dockerCli *dockerClient.Client,
-) NetworkDriver {
+) Driver {
 	hostname, err := osutils.GetHostname()
 	if err != nil {
 		log.Fatalf("Hostname fetching error, %v", err)
 	}
 
-	driver := NetworkDriver{
+	driver := Driver{
 		client:    client,
 		dockerCli: dockerCli,
 
@@ -146,7 +146,7 @@ func getLabelPollTimeout() time.Duration {
 	return labelPollTimeout
 }
 
-func (d NetworkDriver) GetCapabilities() (*network.CapabilitiesResponse, error) {
+func (d Driver) GetCapabilities() (*network.CapabilitiesResponse, error) {
 	resp := network.CapabilitiesResponse{Scope: "global"}
 	logutils.JSONMessage("GetCapabilities response", resp)
 	return &resp, nil
@@ -154,7 +154,7 @@ func (d NetworkDriver) GetCapabilities() (*network.CapabilitiesResponse, error) 
 
 // AllocateNetwork is used for swarm-mode support in remote plugins, which
 // Calico's libnetwork-plugin doesn't currently support.
-func (d NetworkDriver) AllocateNetwork(request *network.AllocateNetworkRequest) (*network.AllocateNetworkResponse, error) {
+func (d Driver) AllocateNetwork(request *network.AllocateNetworkRequest) (*network.AllocateNetworkResponse, error) {
 	var resp network.AllocateNetworkResponse
 	logutils.JSONMessage("AllocateNetwork response", resp)
 	return &resp, nil
@@ -162,12 +162,12 @@ func (d NetworkDriver) AllocateNetwork(request *network.AllocateNetworkRequest) 
 
 // FreeNetwork is used for swarm-mode support in remote plugins, which
 // Calico's libnetwork-plugin doesn't currently support.
-func (d NetworkDriver) FreeNetwork(request *network.FreeNetworkRequest) error {
+func (d Driver) FreeNetwork(request *network.FreeNetworkRequest) error {
 	logutils.JSONMessage("FreeNetwork request", request)
 	return nil
 }
 
-func (d NetworkDriver) CreateNetwork(request *network.CreateNetworkRequest) error {
+func (d Driver) CreateNetwork(request *network.CreateNetworkRequest) error {
 	logutils.JSONMessage("CreateNetwork", request)
 	knownOpts := map[string]bool{"com.docker.network.enable_ipv6": true}
 	// Reject all options (--internal, --enable_ipv6, etc)
@@ -258,12 +258,12 @@ func (d NetworkDriver) CreateNetwork(request *network.CreateNetworkRequest) erro
 	return d.populatePoolLabel(ps, request.NetworkID)
 }
 
-func (d NetworkDriver) DeleteNetwork(request *network.DeleteNetworkRequest) error {
+func (d Driver) DeleteNetwork(request *network.DeleteNetworkRequest) error {
 	logutils.JSONMessage("DeleteNetwork", request)
 	return nil
 }
 
-func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*network.CreateEndpointResponse, error) {
+func (d Driver) CreateEndpoint(request *network.CreateEndpointRequest) (*network.CreateEndpointResponse, error) {
 	logutils.JSONMessage("CreateEndpoint", request)
 
 	ctx := context.Background()
@@ -324,7 +324,7 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 	var mac net.HardwareAddr
 	if request.Interface.MacAddress != "" {
 		if mac, err = net.ParseMAC(request.Interface.MacAddress); err != nil {
-			log.Errorln("Error parsing MAC address, %v", err)
+			log.Errorf("Error parsing MAC address, %v", err)
 			return nil, err
 		}
 	}
@@ -402,7 +402,7 @@ func (d NetworkDriver) CreateEndpoint(request *network.CreateEndpointRequest) (*
 	return response, nil
 }
 
-func (d NetworkDriver) DeleteEndpoint(request *network.DeleteEndpointRequest) error {
+func (d Driver) DeleteEndpoint(request *network.DeleteEndpointRequest) error {
 	logutils.JSONMessage("DeleteEndpoint", request)
 	log.Debugf("Removing endpoint %v\n", request.EndpointID)
 
@@ -431,12 +431,12 @@ func (d NetworkDriver) DeleteEndpoint(request *network.DeleteEndpointRequest) er
 	return err
 }
 
-func (d NetworkDriver) EndpointInfo(request *network.InfoRequest) (*network.InfoResponse, error) {
+func (d Driver) EndpointInfo(request *network.InfoRequest) (*network.InfoResponse, error) {
 	logutils.JSONMessage("EndpointInfo", request)
 	return nil, nil
 }
 
-func (d NetworkDriver) Join(request *network.JoinRequest) (*network.JoinResponse, error) {
+func (d Driver) Join(request *network.JoinRequest) (*network.JoinResponse, error) {
 	logutils.JSONMessage("Join", request)
 
 	ctx := context.Background()
@@ -524,13 +524,13 @@ func (d NetworkDriver) Join(request *network.JoinRequest) (*network.JoinResponse
 }
 
 // Leave .
-func (d NetworkDriver) Leave(request *network.LeaveRequest) error {
+func (d Driver) Leave(request *network.LeaveRequest) error {
 	caliName := "cali" + request.EndpointID[:mathutils.MinInt(11, len(request.EndpointID))]
 	return netns.RemoveVeth(caliName)
 }
 
 // FindPoolByNetworkID .
-func (d NetworkDriver) FindPoolByNetworkID(networkID string) (*api.IPPool, error) {
+func (d Driver) FindPoolByNetworkID(networkID string) (*api.IPPool, error) {
 	var (
 		pools *api.IPPoolList
 		err   error
@@ -550,23 +550,23 @@ func (d NetworkDriver) FindPoolByNetworkID(networkID string) (*api.IPPool, error
 	return nil, errors.Errorf("[calico.NetworkDriver::findPoolByNetworkID] Not find pool by networkID, %s", networkID)
 }
 
-func (d NetworkDriver) DiscoverNew(request *network.DiscoveryNotification) error {
+func (d Driver) DiscoverNew(request *network.DiscoveryNotification) error {
 	logutils.JSONMessage("DiscoverNew", request)
 	log.Debugln("DiscoverNew response JSON={}")
 	return nil
 }
 
-func (d NetworkDriver) DiscoverDelete(request *network.DiscoveryNotification) error {
+func (d Driver) DiscoverDelete(request *network.DiscoveryNotification) error {
 	logutils.JSONMessage("DiscoverDelete", request)
 	log.Debugln("DiscoverDelete response JSON={}")
 	return nil
 }
 
-func (d NetworkDriver) ProgramExternalConnectivity(*network.ProgramExternalConnectivityRequest) error {
+func (d Driver) ProgramExternalConnectivity(*network.ProgramExternalConnectivityRequest) error {
 	return nil
 }
 
-func (d NetworkDriver) RevokeExternalConnectivity(*network.RevokeExternalConnectivityRequest) error {
+func (d Driver) RevokeExternalConnectivity(*network.RevokeExternalConnectivityRequest) error {
 	return nil
 }
 
@@ -583,7 +583,7 @@ func (d NetworkDriver) RevokeExternalConnectivity(*network.RevokeExternalConnect
 // Above may take 1 or more retries, because Docker has to update the
 // container list in the NetworkInspect and make the Container available
 // for inspecting.
-func (d NetworkDriver) populateWorkloadEndpointWithLabels(request *network.CreateEndpointRequest, endpoint *api.WorkloadEndpoint) {
+func (d Driver) populateWorkloadEndpointWithLabels(request *network.CreateEndpointRequest, endpoint *api.WorkloadEndpoint) {
 	ctx := context.Background()
 
 	networkID := request.NetworkID
@@ -716,7 +716,7 @@ RETRY_UPDATE_ENDPOINT:
 
 }
 
-func (d NetworkDriver) generateEndpointName(hostname, endpointID string) (string, error) {
+func (d Driver) generateEndpointName(hostname, endpointID string) (string, error) {
 	wepNameIdent := wepname.WorkloadEndpointIdentifiers{
 		Node:         hostname,
 		Orchestrator: d.orchestratorID,
@@ -725,7 +725,7 @@ func (d NetworkDriver) generateEndpointName(hostname, endpointID string) (string
 	return wepNameIdent.CalculateWorkloadEndpointName(false)
 }
 
-func (d NetworkDriver) populatePoolLabel(pools []string, networkID string) error {
+func (d Driver) populatePoolLabel(pools []string, networkID string) error {
 	ctx := context.Background()
 	poolClient := d.client.IPPools()
 	ipPools, err := poolClient.List(ctx, options.ListOptions{})

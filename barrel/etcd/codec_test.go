@@ -8,5 +8,5 @@ import (
 
 func TestMarshal(t *testing.T) {
 	var bytes []byte
-	assert.Equal(t, "", string(bytes))
+	assert.Equal(t, "", string(bytes), "this shouldn't happen")
 }

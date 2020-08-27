@@ -25,6 +25,7 @@ require (
 	github.com/projectcalico/libnetwork-plugin v1.1.3-0.20180524185918-f42c4fce3cdb
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.6.0
+	github.com/stretchr/testify v1.4.0
 	github.com/urfave/cli/v2 v2.2.0
 	github.com/vishvananda/netlink v1.1.0
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200824191128-ae9734ed278b

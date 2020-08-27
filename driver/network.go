@@ -21,7 +21,7 @@ import (
 
 // NetworkDriver .
 type NetworkDriver struct {
-	calNetDriver calNetDriver.NetworkDriver
+	calNetDriver calNetDriver.Driver
 	dockerCli    *dockerClient.Client
 	meta         barrel.Meta
 }

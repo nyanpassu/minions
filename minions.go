@@ -46,7 +46,7 @@ func serve(c *cli.Context) error {
 	if barrelMeta, err = etcd.NewEtcdClient(c.Context, *config); err != nil {
 		return err
 	}
-	if dockerCli, err = dockerClient.NewEnvClient(); err != nil {
+	if dockerCli, err = dockerClient.NewClientWithOpts(dockerClient.FromEnv); err != nil {
 		return errors.Wrap(err, "Error while attempting to instantiate docker client from env")
 	}
 
