@@ -5,8 +5,9 @@ go 1.14
 require (
 	github.com/Azure/go-autorest/autorest v0.11.4 // indirect
 	github.com/Azure/go-autorest/autorest/adal v0.9.2 // indirect
-	github.com/coreos/etcd v3.3.25+incompatible
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
+	github.com/Microsoft/go-winio v0.4.14 // indirect
+	github.com/coreos/etcd v3.3.25+incompatible
 	github.com/docker/distribution v2.7.1+incompatible // indirect
 	github.com/docker/docker v17.12.0-ce-rc1.0.20180616010903-de0abf4315fd+incompatible
 	github.com/docker/go-connections v0.4.0 // indirect
@@ -34,10 +35,10 @@ require (
 	go.uber.org/automaxprocs v1.3.0
 	google.golang.org/grpc v1.25.1 // indirect
 	gopkg.in/go-playground/validator.v8 v8.18.2 // indirect
-	k8s.io/api v0.15.12
+	k8s.io/api v0.15.12 // indirect
 	k8s.io/apimachinery v0.15.12
-	k8s.io/client-go v0.15.12
-	k8s.io/kube-openapi v0.0.0-20200811211545-daf3cbb84823 //indirect
+	k8s.io/client-go v0.15.12 // indirect
+	k8s.io/kube-openapi v0.0.0-20200811211545-daf3cbb84823 // indirect
 	k8s.io/utils v0.0.0-20200821003339-5e75c0163111 // indirect
 )
 
