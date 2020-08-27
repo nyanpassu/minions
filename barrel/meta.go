@@ -1,15 +1,15 @@
-// package barrel
+package barrel
 
-// import (
-// 	"context"
+import (
+	"context"
 
-// 	"github.com/projecteru2/minions/types"
-// )
+	"github.com/projecteru2/minions/types"
+)
 
-// // MetaInterface .
-// type MetaInterface interface {
-// 	ReserveIPforContainer(ctx context.Context, IP *types.ReservedAddress, ID string) error
-// 	IPIsReserved(ctx context.Context, IP *types.ReservedAddress) (bool, error)
-// 	ConsumeRequestMarkIfPresent(ctx context.Context, req *types.ReserveRequest) (bool, error)
-// 	AquireIfReserved(ctx context.Context, IP *types.ReservedAddress) (bool, error)
-// }
+// Meta .
+type Meta interface {
+	ReserveIPforContainer(ctx context.Context, address *types.ReservedAddress, ID string) error
+	IPIsReserved(ctx context.Context, address *types.ReservedAddress) (bool, error)
+	ConsumeRequestMarkIfPresent(ctx context.Context, request *types.ReserveRequest) (bool, error)
+	AquireIfReserved(ctx context.Context, address *types.ReservedAddress) (bool, error)
+}

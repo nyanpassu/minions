@@ -6,10 +6,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	fixedIPLabel = "fixed-ip"
-)
-
 // IFPrefix .
 var IFPrefix = "cali"
 

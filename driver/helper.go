@@ -2,14 +2,15 @@ package driver
 
 import (
 	"fmt"
-	// "os"
-	// "strings"
-	// "time"
+	"strings"
 
-	// dockerTypes "github.com/docker/docker/api/types"
+	dockerTypes "github.com/docker/docker/api/types"
 	"github.com/pkg/errors"
 	caliconet "github.com/projectcalico/libcalico-go/lib/net"
-	// log "github.com/sirupsen/logrus"
+)
+
+const (
+	fixedIPLabel = "fixed-ip"
 )
 
 func formatIPAddress(ip caliconet.IP) string {
@@ -30,7 +31,7 @@ func checkOptions(options map[string]string) error {
 	return nil
 }
 
-// func containerHasFixedIPLabel(container dockerTypes.Container) bool {
-// 	value, hasFixedIPLabel := container.Labels[fixedIPLabel]
-// 	return hasFixedIPLabel && strings.ToLower(value) != "false" && value != "0"
-// }
+func containerHasFixedIPLabel(container dockerTypes.Container) bool {
+	value, hasFixedIPLabel := container.Labels[fixedIPLabel]
+	return hasFixedIPLabel && strings.ToLower(value) != "false" && value != "0"
+}

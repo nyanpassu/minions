@@ -6,12 +6,14 @@ import (
 
 	pluginIPAM "github.com/docker/go-plugins-helpers/ipam"
 	pluginNetwork "github.com/docker/go-plugins-helpers/network"
+	"github.com/pkg/errors"
 	"github.com/projectcalico/libcalico-go/lib/apiconfig"
 	calicov3 "github.com/projectcalico/libcalico-go/lib/clientv3"
 	cli "github.com/urfave/cli/v2"
 
-	// "github.com/projecteru2/minions/barrel"
-	// "github.com/projecteru2/minions/barrel/etcd"
+	dockerClient "github.com/docker/docker/client"
+	"github.com/projecteru2/minions/barrel"
+	"github.com/projecteru2/minions/barrel/etcd"
 	"github.com/projecteru2/minions/driver"
 	"github.com/projecteru2/minions/versioninfo"
 	log "github.com/sirupsen/logrus"
@@ -28,11 +30,11 @@ func serve(c *cli.Context) error {
 	}
 
 	var (
-		config    *apiconfig.CalicoAPIConfig
-		calicoCli calicov3.Interface
-		// barrelCli barrel.MetaInterface
-		// dockerCli *dockerClient.Client
-		err error
+		config     *apiconfig.CalicoAPIConfig
+		calicoCli  calicov3.Interface
+		barrelMeta barrel.Meta
+		dockerCli  *dockerClient.Client
+		err        error
 	)
 
 	if config, err = apiconfig.LoadClientConfig(""); err != nil {
@@ -41,15 +43,15 @@ func serve(c *cli.Context) error {
 	if calicoCli, err = calicov3.New(*config); err != nil {
 		return err
 	}
-	// if barrelCli, err = etcd.NewEtcdClient(c.Context, *config); err != nil {
-	// 	return err
-	// }
-	// if dockerCli, err = dockerClient.NewEnvClient(); err != nil {
-	// 	return errors.Wrap(err, "Error while attempting to instantiate docker client from env")
-	// }
+	if barrelMeta, err = etcd.NewEtcdClient(c.Context, *config); err != nil {
+		return err
+	}
+	if dockerCli, err = dockerClient.NewEnvClient(); err != nil {
+		return errors.Wrap(err, "Error while attempting to instantiate docker client from env")
+	}
 
 	errChannel := make(chan error)
-	networkHandler := pluginNetwork.NewHandler(driver.NewNetworkDriver(calicoCli))
+	networkHandler := pluginNetwork.NewHandler(driver.NewNetworkDriver(calicoCli, dockerCli, barrelMeta))
 	ipamHandler := pluginIPAM.NewHandler(driver.NewIPAMDriver(calicoCli))
 
 	go func() {

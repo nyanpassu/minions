@@ -43,10 +43,10 @@ const (
 	NAMESPACE_ENVKEY          = "CALICO_LIBNETWORK_NAMESPACE"          // nolint
 )
 
+// NetworkDriver .
 type NetworkDriver struct {
-	client    clientv3.Interface
-	dockerCli *dockerClient.Client
-	// meta           barrel.MetaInterface
+	client         clientv3.Interface
+	dockerCli      *dockerClient.Client
 	containerName  string
 	orchestratorID string
 	namespace      string
@@ -67,8 +67,7 @@ type NetworkDriver struct {
 func NewNetworkDriver(
 	client clientv3.Interface,
 	dockerCli *dockerClient.Client,
-	// meta barrel.MetaInterface,
-) network.Driver {
+) NetworkDriver {
 	hostname, err := osutils.GetHostname()
 	if err != nil {
 		log.Fatalf("Hostname fetching error, %v", err)
@@ -525,101 +524,32 @@ func (d NetworkDriver) Join(request *network.JoinRequest) (*network.JoinResponse
 	return resp, nil
 }
 
-// func (d NetworkDriver) findPoolByNetworkID(networkID string) (*api.IPPool, error) {
-// 	var (
-// 		pools *api.IPPoolList
-// 		err   error
-// 	)
-
-// 	if pools, err = d.client.IPPools().List(context.Background(), options.ListOptions{}); err != nil {
-// 		err = errors.Annotatef(err, "Network %v gather error", networkID)
-// 		log.Errorln(err)
-// 		return nil, err
-// 	}
-
-// 	for _, p := range pools.Items {
-// 		if nid, ok := p.Annotations[DOCKER_LABEL_PREFIX+"network.ID"]; ok && nid == networkID {
-// 			return &p, nil
-// 		}
-// 	}
-
-// 	return nil, errors.Errorf("[NetworkDriver::findPoolByNetworkID] Not find pool by networkID, %s", networkID)
-// }
-
 // Leave .
 func (d NetworkDriver) Leave(request *network.LeaveRequest) error {
-	logutils.JSONMessage("Leave response", request)
-	// var (
-	// 	container        dockerTypes.Container
-	// 	endpointSettings *dockerNetworkTypes.EndpointSettings
-	// 	pool             *api.IPPool
-	// 	shouldReserveIP  bool
-	// 	err              error
-	// )
-	// if container, endpointSettings, err = d.findDockerContainerByEndpointID(request.EndpointID); err != nil {
-	// 	return err
-	// }
-
-	// if pool, err = d.findPoolByNetworkID(endpointSettings.NetworkID); err != nil {
-	// 	return err
-	// }
-
-	// if shouldReserveIP, err = d.shouldReserveIP(
-	// 	container,
-	// 	&types.ReserveRequest{
-	// 		Base: types.Base{
-	// 			PoolID:  pool.Name,
-	// 			Address: endpointSettings.IPAddress,
-	// 		},
-	// 	}); err != nil {
-	// 	// we move on when trying to find out whether should reserve by reserve request mark
-	// 	log.Errorln(err)
-	// }
-	// if shouldReserveIP {
-	// 	if err = d.meta.ReserveIPforContainer(
-	// 		context.Background(),
-	// 		&types.ReservedIPAddress{
-	// 			Base: types.Base{
-	// 				PoolID:  pool.Name,
-	// 				Address: endpointSettings.IPAddress,
-	// 			},
-	// 		}, container.ID); err != nil {
-	// 		// we move on when reserve is failed
-	// 		log.Errorln(err)
-	// 	}
-	// }
-
 	caliName := "cali" + request.EndpointID[:mathutils.MinInt(11, len(request.EndpointID))]
 	return netns.RemoveVeth(caliName)
 }
 
-// func (d NetworkDriver) shouldReserveIP(container dockerTypes.Container, address *types.ReserveRequest) (shouldReserve bool, err error) {
-// 	// reserve ip here by container label
-// 	if containerHasFixedIPLabel(container) {
-// 		shouldReserve = true
-// 		// we should consume the mark
-// 		if _, err := d.meta.ConsumeRequestMarkIfPresent(context.Background(), address); err != nil {
-// 			log.Errorf("[Network.ConsumeRequestMarkIfPresent] remove request mark error, %v", err)
-// 		}
-// 		log.Infof("[Network.ConsumeRequestMarkIfPresent] container has fixed-ip label, shouldReserve ip(%v) = %v", address, shouldReserve)
-// 		return
-// 	}
-// 	// reserve ip here by reserve request mark
-// 	if shouldReserve, err = d.meta.ConsumeRequestMarkIfPresent(context.Background(), address); err != nil {
-// 		// ensure shouldReserve is false here when err is not nil
-// 		log.Errorf("[Network.ConsumeRequestMarkIfPresent] error, %v", err)
-// 		shouldReserve = false
-// 		return
-// 	}
-// 	var msg string
-// 	if shouldReserve {
-// 		msg = "marked as requested"
-// 	} else {
-// 		msg = "not marked as requested"
-// 	}
-// 	log.Infof("[Network.ConsumeRequestMarkIfPresent] address is %s, shouldReserve ip(%v) = %v", msg, address, shouldReserve)
-// 	return
-// }
+// FindPoolByNetworkID .
+func (d NetworkDriver) FindPoolByNetworkID(networkID string) (*api.IPPool, error) {
+	var (
+		pools *api.IPPoolList
+		err   error
+	)
+
+	if pools, err = d.client.IPPools().List(context.Background(), options.ListOptions{}); err != nil {
+		log.Errorf("[calico.NetworkDriver::FindPoolByNetworkID] Network %v gather error, %v", networkID, err)
+		return nil, err
+	}
+
+	for _, p := range pools.Items {
+		if nid, ok := p.Annotations[DOCKER_LABEL_PREFIX+"network.ID"]; ok && nid == networkID {
+			return &p, nil
+		}
+	}
+
+	return nil, errors.Errorf("[calico.NetworkDriver::findPoolByNetworkID] Not find pool by networkID, %s", networkID)
+}
 
 func (d NetworkDriver) DiscoverNew(request *network.DiscoveryNotification) error {
 	logutils.JSONMessage("DiscoverNew", request)
@@ -795,22 +725,6 @@ func (d NetworkDriver) generateEndpointName(hostname, endpointID string) (string
 	}
 	return wepNameIdent.CalculateWorkloadEndpointName(false)
 }
-
-// func (d NetworkDriver) findDockerContainerByEndpointID(endpointID string) (dockerTypes.Container, *dockerNetworkTypes.EndpointSettings, error) {
-// 	containers, err := d.dockerCli.ContainerList(context.Background(), dockerTypes.ContainerListOptions{})
-// 	if err != nil {
-// 		log.Errorf("dockerCli ContainerList Error, %v", err)
-// 		return dockerTypes.Container{}, nil, err
-// 	}
-// 	for _, container := range containers {
-// 		for _, network := range container.NetworkSettings.Networks {
-// 			if endpointID == network.EndpointID {
-// 				return container, network, nil
-// 			}
-// 		}
-// 	}
-// 	return dockerTypes.Container{}, nil, errors.Errorf("find no container with endpintID = %s", endpointID)
-// }
 
 func (d NetworkDriver) populatePoolLabel(pools []string, networkID string) error {
 	ctx := context.Background()
