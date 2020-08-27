@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coreos/etcd/clientv3"
 	"github.com/pkg/errors"
 	"github.com/projectcalico/libcalico-go/lib/apiconfig"
 	"github.com/projecteru2/minions/types"
-	"go.etcd.io/etcd/clientv3"
 )
 
 const (
