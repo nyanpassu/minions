@@ -52,7 +52,7 @@ func serve(c *cli.Context) error {
 
 	errChannel := make(chan error)
 	networkHandler := pluginNetwork.NewHandler(driver.NewNetworkDriver(calicoCli, dockerCli, barrelMeta))
-	ipamHandler := pluginIPAM.NewHandler(driver.NewIPAMDriver(calicoCli))
+	ipamHandler := pluginIPAM.NewHandler(driver.NewIPAMDriver(calicoCli, barrelMeta))
 
 	go func() {
 		log.Infoln("calico-net has started.")
