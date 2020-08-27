@@ -31,14 +31,14 @@ require (
 	github.com/urfave/cli/v2 v2.2.0
 	github.com/vishvananda/netlink v1.1.0
 	go.etcd.io/etcd v3.3.1+incompatible // indirect
-	// go.etcd.io/etcd v0.5.0-alpha.5.0.20200824191128-ae9734ed278b
+	github.com/googleapis/gnostic v0.0.0-20170729233727-0c5108395e2d // indirect
 	go.uber.org/automaxprocs v1.3.0
 	google.golang.org/grpc v1.25.1 // indirect
 	gopkg.in/go-playground/validator.v8 v8.18.2 // indirect
 	k8s.io/api v0.15.12 // indirect
 	k8s.io/apimachinery v0.15.12
 	k8s.io/client-go v0.15.12 // indirect
-	k8s.io/kube-openapi v0.0.0-20200811211545-daf3cbb84823 // indirect
+	k8s.io/kube-openapi v0.0.0-20190228160746-b3a7cee44a30 // indirect
 	k8s.io/utils v0.0.0-20200821003339-5e75c0163111 // indirect
 )
 
