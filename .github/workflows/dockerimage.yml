@@ -17,7 +17,7 @@ jobs:
       - name: build and push
         uses: docker/build-push-action@v1
         with:
-          repository: projecteru2/minions
+          repository: nyanpassu/minions
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
           tag_with_ref: true
