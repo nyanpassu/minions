@@ -10,10 +10,10 @@ import (
 func (e *Etcd) ReserveIPforContainer(ctx context.Context, address *types.ReservedAddress, containerID string) error {
 	container := &types.ContainerInfo{
 		ID: containerID,
-		ReservedAddress: types.ReservedAddress{
+		Addresses: []types.ReservedAddress{{
 			PoolID:  address.PoolID,
 			Address: address.Address,
-		},
+		}},
 	}
 	return e.PutMulti(ctx, ContainerInfoCodec{container}, ReservedAddressCodec{address})
 }

@@ -66,12 +66,12 @@ func NewEtcdClient(ctx context.Context, config apiconfig.CalicoAPIConfig) (*Etcd
 }
 
 // Get .
-func (e *Etcd) Get(ctx context.Context, decoder Decoder, opts ...clientv3.OpOption) (bool, error) {
+func (e *Etcd) Get(ctx context.Context, decoder Decoder) (bool, error) {
 	var (
 		resp *clientv3.GetResponse
 		err  error
 	)
-	if resp, err = e.cliv3.Get(ctx, decoder.Key(), opts...); err != nil {
+	if resp, err = e.cliv3.Get(ctx, decoder.Key()); err != nil {
 		return false, err
 	}
 	if len(resp.Kvs) == 0 {
@@ -106,10 +106,34 @@ func (e *Etcd) Delete(ctx context.Context, encoder Encoder) (bool, error) {
 		resp *clientv3.DeleteResponse
 		err  error
 	)
+	if key == "" {
+		return false, ErrKeyIsBlank
+	}
 	if resp, err = e.cliv3.Delete(ctx, key, clientv3.WithPrevKV()); err != nil {
 		return false, err
 	}
 	return len(resp.PrevKvs) > 0, nil
+}
+
+// GetAndDelete delete key, and return value
+// returns true on delete count > 0
+func (e *Etcd) GetAndDelete(ctx context.Context, decoder Decoder) (bool, error) {
+	var (
+		key  = decoder.Key()
+		resp *clientv3.DeleteResponse
+		err  error
+	)
+	if key == "" {
+		return false, ErrKeyIsBlank
+	}
+	if resp, err = e.cliv3.Delete(ctx, key, clientv3.WithPrevKV()); err != nil {
+		return false, err
+	}
+	if len(resp.PrevKvs) == 0 {
+		return false, nil
+	}
+	err = decoder.Decode(string(resp.PrevKvs[0].Value))
+	return err == nil, err
 }
 
 // PutMulti .
